@@ -48,6 +48,18 @@ and run the workflow again. The workflow tries to reuse the debug signing
 key; if it is lost or changed, Android will reject an update over the old
 APK. **Export a JSON backup before uninstalling any APK**.
 
+### If an Actions build fails
+
+The workflow uses Ubuntu 24.04's preinstalled SDK and Node 24-compatible
+actions. It does not use `android-actions/setup-android`. Failed SDK or
+Gradle steps upload **SetStack-debug-build-logs** under the run's Artifacts;
+download that ZIP to share the actual error. Deprecation warnings alone
+do not identify a build failure.
+
+After changing build files, commit and push them, then start a **new**
+workflow run on the updated branch. **Re-run jobs** on an old run uses
+the old source commit and will not pick up the fix.
+
 ### What to test on the phone
 
 Use the clearly labelled starter/demo clients, or make a temporary client
