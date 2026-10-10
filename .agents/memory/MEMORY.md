@@ -1,5 +1,6 @@
 - [CoachAura commercial intent](setstack-business-intent.md) — renamed from SetStack; trainer-facing Android APK intended for a 399 SEK one-off lifetime purchase.
 - [CoachAura dark-first design](setstack-dark-first.md) — default dark regardless of Android system theme; restrained green accents and no white startup flashes.
 - [Unfinished workout safety](unfinished-workout-safety.md) — trainer shortcuts must protect the current workout when switching clients.
+- [Fast logging safety](workout-logging-safety.md) — protect pending inputs and exact loads; independent template assignments; foreground-only rest alerts.
 - [Browser persistence fixtures](browser-persistence-fixtures.md) — seed test storage once; unconditional init scripts reset records on reload.
 - [Client muscle dashboard choice](gymmane-analytics-fidelity.md) — CoachAura dashboard replaces the GymMane profile graph; retain GPL attribution and stored workout data.

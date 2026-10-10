@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Switch, useLocation, useParams } from "wouter";
 import {
   Activity, ArrowDownToLine, ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check,
@@ -7,23 +7,21 @@ import {
   UserRound, Users, Weight, X, Zap,
 } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
-import { kProgramTemplates } from "@/lib/gymmane/programs";
-import type { Client, Routine } from "@/lib/gymmane/models";
-import type { CatalogExercise } from "@/lib/gymmane/catalog";
+import type { Client, Routine, SessionLog } from "@/lib/gymmane/models";
 import { fromDisplay, formatLoad, isoWeekday, shortDate, shiftIso, todayIso, toDisplay, uid, weekStart, WEEKDAYS } from "@/lib/gymmane/engine";
-import { clientSummary, lastPerformance, personalRecords, bestSetOneRm, suggestSet } from "@/lib/gymmane/metrics";
+import { clientSummary, personalRecords, bestSetOneRm } from "@/lib/gymmane/metrics";
 import { TrainerDashboard } from "@/components/trainer-dashboard";
 import { MuscleActivityDashboard } from "@/components/muscle-activity-dashboard";
 import { CustomExerciseMuscles } from "@/components/custom-exercise-muscles";
+import { Modal, fieldClass, btn, primaryBtn, quietBtn, labelClass } from "@/components/workout/shared";
+import { WorkoutDrawer } from "@/components/workout/workout-logger";
+import { TemplateAssign } from "@/components/workout/template-assign";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { isAndroidApp } from "@/lib/native/android";
 import { exportBackupFile } from "@/lib/native/backup";
 
-const fieldClass = "w-full rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 py-2.5 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]";
-const btn = "inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition hover:-translate-y-px disabled:pointer-events-none disabled:opacity-45";
-const primaryBtn = `${btn} bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]`;
-const quietBtn = `${btn} border border-[hsl(var(--border))] bg-[hsl(var(--card))] text-[hsl(var(--foreground))] hover:bg-[hsl(var(--muted))]`;
-const labelClass = "mb-1.5 block text-xs font-semibold tracking-wide text-[hsl(var(--muted-foreground))]";
+const RoutineModal = lazy(() => import("@/components/workout/routine-editor").then((module) => ({ default: module.RoutineModal })));
+const SessionEditor = lazy(() => import("@/components/workout/session-editor").then((module) => ({ default: module.SessionEditor })));
 
 function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <section className={`rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_rgba(35,55,47,.035)] ${className}`}>{children}</section>;
@@ -41,15 +39,6 @@ function StatusPill({ status }: { status: string }) {
   const words: Record<string, string> = { "on-floor": "On track", due: "Due soon", overdue: "Needs a check-in", new: "New athlete" };
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone}`}>{words[status] ?? status}</span>;
 }
-function Modal({ title, children, onClose, wide = false }: { title: string; children: ReactNode; onClose: () => void; wide?: boolean }) {
-  useEffect(() => registerNativeBackHandler(onClose), [onClose]);
-  return <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] sm:items-center sm:p-5" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-[92dvh] w-full min-w-0 overflow-y-auto rounded-t-3xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 shadow-2xl [overflow-wrap:anywhere] sm:rounded-3xl ${wide ? "max-w-2xl" : "max-w-lg"}`}>
-      <div className="mb-5 flex items-start justify-between gap-4"><div><p className="mono text-[10px] uppercase tracking-[.18em] text-[hsl(var(--muted-foreground))]">CoachAura workspace</p><h2 className="display-font mt-1 text-xl font-semibold">{title}</h2></div><button className="rounded-lg p-2 hover:bg-[hsl(var(--muted))]" onClick={onClose} aria-label="Close dialog" data-testid="button-close-dialog"><X size={18}/></button></div>
-      {children}
-    </div>
-  </div>;
-}
 function useConfirm(): [(o:{title:string;message:string;confirmLabel:string;onConfirm:()=>void})=>void, ReactNode] {
   const [req,setReq]=useState<{title:string;message:string;confirmLabel:string;onConfirm:()=>void}|null>(null);
   const node=req?<Modal title={req.title} onClose={()=>setReq(null)}><p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">{req.message}</p><div className="mt-5 flex justify-end gap-2"><button type="button" className={quietBtn} onClick={()=>setReq(null)} data-testid="button-confirm-cancel">Cancel</button><button type="button" className={`${btn} bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]`} onClick={()=>{const go=req.onConfirm;setReq(null);go();}} data-testid="button-confirm-accept">{req.confirmLabel}</button></div></Modal>:null;
@@ -60,6 +49,7 @@ function AppShell({ children }: { children: ReactNode }) {
   const draft = useFloor((s) => s.draft);
   const clients = useFloor((s) => s.clients);
   const [drawer, setDrawer] = useState(false);
+  const [askShell, shellConfirm] = useConfirm();
   useEffect(() => drawer ? registerNativeBackHandler(() => setDrawer(false)) : undefined, [drawer]);
   const [notice, setNotice] = useState("");
   const storeNotice = useFloor((s) => s.notice);
@@ -87,7 +77,7 @@ function AppShell({ children }: { children: ReactNode }) {
   return <div className="grain min-h-[100dvh] bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"><aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col bg-[hsl(var(--sidebar))] px-4 py-5 text-[hsl(var(--sidebar-foreground))] lg:flex"><Link href="/" className="mb-9 flex items-center gap-3 px-2" data-testid="link-brand"><img src={`${import.meta.env.BASE_URL}favicon.svg`} alt="" className="h-10 w-10 rounded-xl"/><div><div className="display-font text-lg font-bold tracking-tight">CoachAura<span className="text-[hsl(var(--sidebar-primary))]">.</span></div><div className="mono text-[9px] uppercase tracking-[.16em] text-[hsl(var(--sidebar-foreground))]/45">Coach's floor</div></div></Link>{nav}</aside>
     {drawer && <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setDrawer(false)}><aside onClick={e => e.stopPropagation()} className="flex h-full w-[min(84vw,300px)] flex-col bg-[hsl(var(--sidebar))] p-4 text-[hsl(var(--sidebar-foreground))]"><div className="mb-8 flex items-center justify-between"><Link href="/" className="display-font text-xl font-bold">CoachAura<span className="text-[hsl(var(--sidebar-primary))]">.</span></Link><button onClick={() => setDrawer(false)} aria-label="Close menu" className="p-2"><X/></button></div>{nav}</aside></div>}
     <div className="lg:pl-[248px]"><header className="sticky top-0 z-20 flex h-[62px] items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 backdrop-blur-md sm:px-7"><div className="flex items-center gap-3"><button className="rounded-lg p-2 hover:bg-[hsl(var(--muted))] lg:hidden" aria-label="Open navigation" onClick={() => setDrawer(true)} data-testid="button-open-nav"><Menu size={19}/></button><span className="display-font text-base font-bold lg:hidden">CoachAura<span className="text-[hsl(var(--primary))]">.</span></span><span className="hidden sm:inline text-sm text-[hsl(var(--muted-foreground))]">Personal training, kept in motion.</span></div><div className="flex items-center gap-2">{draft && <Link href={`/clients/${draft.clientId}`} onClick={()=>window.dispatchEvent(new Event("setstack:resume-workout"))} className="inline-flex items-center gap-2 rounded-xl bg-[hsl(var(--secondary))] px-3 py-2 text-xs font-bold text-[hsl(var(--secondary-foreground))]" data-testid="link-active-session"><span className="h-2 w-2 animate-pulse rounded-full bg-[hsl(var(--primary))]"/><span className="hidden sm:inline">Session in progress</span><span className="sm:hidden">Logging</span><ArrowRight size={14}/></Link>}<div className="hidden rounded-xl border border-[hsl(var(--border))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] md:block"><span className="mono">{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span></div></div></header><main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-7 sm:py-8"><div key={location} className="page-enter">{children}</div></main></div>
-    <WorkoutDrawer/>
+    <WorkoutDrawer ask={askShell}/>{shellConfirm}
     {notice && <div role="status" className="pointer-events-none fixed bottom-20 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-[hsl(var(--primary))] px-4 py-3 text-sm font-medium text-[hsl(var(--primary-foreground))] shadow-xl sm:bottom-6" data-testid="status-notice">{notice}</div>}
   </div>;
 }
@@ -140,7 +130,6 @@ function ClientPage() {
   const clients=useFloor(s=>s.clients);
   const client=clients.find(c=>c.id===id);
   const unit=useFloor(s=>s.unit);
-  const assignProgram=useFloor(s=>s.assignProgram);
   const startSession=useFloor(s=>s.startSession);
   const setPlanDay=useFloor(s=>s.setPlanDay);
   const clearPlan=useFloor(s=>s.clearPlan);
@@ -149,15 +138,15 @@ function ClientPage() {
   const deleteSession=useFloor(s=>s.deleteSession);
   const deleteClient=useFloor(s=>s.deleteClient);
   const [edit,setEdit]=useState(false);
+  const [editSession,setEditSession]=useState<SessionLog|null>(null);
   const [routineModal,setRoutineModal]=useState<Routine|null|false>(false);
-  const [program,setProgram]=useState("");
   const [weight,setWeight]=useState("");
   const [ask,confirmNode]=useConfirm();
   const [tab,setTab]=useState<"overview"|"history"|"records"|"muscles">(() => (()=>{const t=new URLSearchParams(window.location.search).get("tab");return t==="muscles"||t==="history"?t:"overview";})());
   useEffect(() => {
     setEdit(false);
+    setEditSession(null);
     setRoutineModal(false);
-    setProgram("");
     setWeight("");
     setTab((()=>{const t=new URLSearchParams(window.location.search).get("tab");return t==="muscles"||t==="history"?t:"overview";})());
   }, [id]);
@@ -174,7 +163,7 @@ function ClientPage() {
     <div className="mb-5 grid min-w-0 grid-cols-2 gap-1 border-b border-[hsl(var(--border))] sm:flex sm:overflow-x-auto">{(["overview","history","records","muscles"] as const).map(key=><button key={key} onClick={()=>setTab(key)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold capitalize ${tab===key?"border-[hsl(var(--primary))] text-[hsl(var(--primary))]":"border-transparent text-[hsl(var(--muted-foreground))]"}`} data-testid={`tab-${key}`}>{key==="records"?"Personal records":key==="history"?"Workout history":key==="muscles"?"Muscle activity":"Overview"}</button>)}</div>
     {tab==="overview"&&<div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(330px,.75fr)]">
       <div className="space-y-5"><div className="grid gap-3 sm:grid-cols-3"><Card className="p-4"><div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]"><Activity size={15}/><span className="mono text-[9px] uppercase tracking-wider">Sessions this week</span></div><p className="display-font mt-3 text-3xl font-semibold">{summary.weekDone}<span className="ml-1 text-sm text-[hsl(var(--muted-foreground))]">/ {summary.weekGoal}</span></p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">Weekly target</p></Card><Card className="p-4"><div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]"><Dumbbell size={15}/><span className="mono text-[9px] uppercase tracking-wider">Lifetime sessions</span></div><p className="display-font mt-3 text-3xl font-semibold">{client.sessions.length}</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{summary.streak} day streak</p></Card><Card className="p-4"><div className="flex items-center gap-2 text-[hsl(var(--muted-foreground))]"><BarChart3 size={15}/><span className="mono text-[9px] uppercase tracking-wider">Top estimated 1RM</span></div><p className="display-font mt-3 truncate text-xl font-semibold">{summary.top?formatLoad(summary.top.e1rm,unit):"—"}</p><p className="mt-1 truncate text-[10px] text-[hsl(var(--muted-foreground))]">{summary.top?.name??"Log a session to begin"}</p></Card></div>
-      <Card className="p-5"><div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><SectionTitle kicker="Training structure" title="Weekly plan"/><div className="flex items-center gap-2"><select className={`${fieldClass} max-w-[190px]`} aria-label="Choose a program template" value={program} onChange={e=>setProgram(e.target.value)} data-testid="select-program-template"><option value="">Assign program…</option>{kProgramTemplates.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><button className={quietBtn} aria-label="Assign selected program" disabled={!program} onClick={()=>{assignProgram(client.id,program);setProgram("");}} data-testid="button-assign-program"><Plus size={15}/><span className="hidden sm:inline">Assign</span></button></div></div>
+      <Card className="p-5"><div className="mb-4 flex flex-col justify-between gap-3 sm:flex-row sm:items-center"><SectionTitle kicker="Training structure" title="Weekly plan"/><div className="flex items-center gap-2"><TemplateAssign clientId={client.id} ask={ask}/></div></div>
         {client.routines.length===0&&<div className="mb-4 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4 text-sm text-[hsl(var(--muted-foreground))]">No plan yet. Assign a template or build an individual routine.</div>}
         <div className="grid gap-2 sm:grid-cols-2">{WEEKDAYS.map((day,index)=>{const rid=client.weeklyPlan[String(index+1)];const routine=client.routines.find(r=>r.id===rid);return <div key={day} className="flex items-center gap-2 rounded-xl bg-[hsl(var(--background))] p-2.5"><span className="w-8 text-[11px] font-bold text-[hsl(var(--muted-foreground))]">{day}</span><select aria-label={`${day} training plan`} className="min-w-0 flex-1 bg-transparent text-xs font-medium outline-none" value={rid??""} onChange={e=>setPlanDay(client.id,index+1,e.target.value||null)} data-testid={`select-plan-${index+1}`}><option value="">Rest day</option>{client.routines.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select>{routine&&<button aria-label={`Start ${routine.name}`} className="rounded-lg p-1.5 text-[hsl(var(--chart-1))] hover:bg-[hsl(var(--accent))]" onClick={()=>startSession(client.id,routine.id)} data-testid={`button-plan-start-${index+1}`}><Zap size={15}/></button>}</div>})}</div>
         <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-[hsl(var(--border))] pt-4"><button className="text-xs font-medium text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" onClick={()=>clearPlan(client.id)} data-testid="button-clear-plan">Clear weekly plan</button><button className={`${quietBtn} min-h-9 px-3`} onClick={()=>setRoutineModal(null)} data-testid="button-new-routine"><Plus size={14}/>New routine</button></div>
@@ -187,92 +176,15 @@ function ClientPage() {
         <Card className="border-0 bg-[hsl(var(--primary))] p-5 text-[hsl(var(--primary-foreground))]"><p className="mono text-[10px] uppercase tracking-[.16em] opacity-60">Coach's focus</p><p className="display-font mt-2 text-xl font-semibold">{summary.status==="overdue"?"Reconnect with "+client.name.split(" ")[0]:summary.top?`${summary.top.name} is the current high mark.`:"Set the first marker."}</p><p className="mt-2 text-xs leading-relaxed opacity-70">{summary.status==="overdue"?"A short check-in can bring the plan back into focus.":summary.top?`Estimated 1RM ${formatLoad(summary.top.e1rm,unit)}. Small progress adds up.`:"Start a session and CoachAura will keep track of the work."}</p></Card>
       </div>
     </div>}
-    {tab==="history"&&<div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]"><Card className="p-5"><SectionTitle kicker="Training log" title="Workout history"/>{latest.length?<div className="space-y-3">{latest.map(session=><details key={session.id} className="group rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]"><summary className="flex cursor-pointer list-none items-center gap-3 p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><Dumbbell size={17}/></div><div className="min-w-0 flex-1"><p className="font-semibold">{session.name}</p><p className="mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{shortDate(session.date)} · {Math.round(session.durationSec/60)} min · {session.exercises.length} exercises</p></div><ChevronDown size={16} className="transition group-open:rotate-180"/></summary><div className="space-y-3 border-t border-[hsl(var(--border))] px-4 py-3">{session.exercises.map(ex=><div key={ex.id}><div className="flex justify-between text-sm font-semibold"><span>{ex.name}</span><span className="mono text-xs">{formatLoad(bestSetOneRm(ex.sets),unit)} e1RM</span></div><div className="mt-1 flex flex-wrap gap-1.5">{ex.sets.map((set,i)=><span key={set.id} className="rounded-md bg-[hsl(var(--muted))] px-2 py-1 mono text-[10px]">{i+1} · {formatLoad(set.weight,unit)} × {set.reps}{set.rpe!=null?` · RIR ${(10-set.rpe).toFixed(set.rpe%1?1:0)}`:""}{set.kind!=="normal"?` · ${set.kind}`:""}</span>)}</div></div>)}<button className="mt-1 text-xs font-medium text-[hsl(var(--destructive))]" onClick={()=>ask({title:"Delete session?",message:"Delete this workout from the training history?",confirmLabel:"Delete session",onConfirm:()=>deleteSession(client.id,session.id)})} data-testid={`button-delete-session-${session.id}`}>Delete this session</button></div></details>)}</div>:<div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Completed sessions will appear here. Start a workout to add the first one.</div>}</Card>
+    {tab==="history"&&<div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]"><Card className="p-5"><SectionTitle kicker="Training log" title="Workout history"/>{latest.length?<div className="space-y-3">{latest.map(session=><details key={session.id} className="group rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]"><summary className="flex cursor-pointer list-none items-center gap-3 p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><Dumbbell size={17}/></div><div className="min-w-0 flex-1"><p className="font-semibold">{session.name}</p><p className="mono mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">{shortDate(session.date)} · {Math.round(session.durationSec/60)} min · {session.exercises.length} exercises</p></div><ChevronDown size={16} className="transition group-open:rotate-180"/></summary><div className="space-y-3 border-t border-[hsl(var(--border))] px-4 py-3">{session.exercises.map(ex=><div key={ex.id}><div className="flex justify-between text-sm font-semibold"><span>{ex.name}</span><span className="mono text-xs">{formatLoad(bestSetOneRm(ex.sets),unit)} e1RM</span></div><div className="mt-1 flex flex-wrap gap-1.5">{ex.sets.map((set,i)=><span key={set.id} className="rounded-md bg-[hsl(var(--muted))] px-2 py-1 mono text-[10px]">{i+1} · {formatLoad(set.weight,unit)} × {set.reps}{set.rpe!=null?` · RIR ${(10-set.rpe).toFixed(set.rpe%1?1:0)}`:""}{set.kind!=="normal"?` · ${set.kind}`:""}</span>)}</div></div>)}<div className="mt-1 flex gap-4"><button className="text-xs font-semibold text-[hsl(var(--primary))]" onClick={()=>setEditSession(session)} data-testid={`button-edit-session-${session.id}`}>Edit this session</button><button className="text-xs font-medium text-[hsl(var(--destructive))]" onClick={()=>ask({title:"Delete session?",message:"Delete this workout from the training history?",confirmLabel:"Delete session",onConfirm:()=>deleteSession(client.id,session.id)})} data-testid={`button-delete-session-${session.id}`}>Delete this session</button></div></div></details>)}</div>:<div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">Completed sessions will appear here. Start a workout to add the first one.</div>}</Card>
       <Card className="p-5"><SectionTitle kicker="Body metrics" title="Measurement timeline"/>{client.bodyweight.length?<div className="space-y-3">{[...client.bodyweight].reverse().map((m,index)=><div key={`${m.date}-${index}`} className="flex items-center gap-3"><div className="mono w-14 text-xs text-[hsl(var(--muted-foreground))]">{shortDate(m.date)}</div><div className="h-2 flex-1 overflow-hidden rounded-full bg-[hsl(var(--muted))]"><div className="h-full rounded-full bg-[hsl(var(--chart-1))]" style={{width:`${Math.max(10,Math.min(100,(m.kg/120)*100))}%`}}/></div><span className="mono w-16 text-right text-xs">{formatLoad(m.kg,unit)}</span></div>)}</div>:<p className="text-sm text-[hsl(var(--muted-foreground))]">Add measurements to build a timeline.</p>}</Card></div>}
     {tab==="records"&&<Card className="p-5"><SectionTitle kicker="All-time best estimated one-rep max" title="Personal records"/>{prs.length?<div className="grid gap-3 md:grid-cols-2">{prs.map((pr,index)=><div key={pr.id} className="relative overflow-hidden rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4" data-testid={`record-${pr.id}`}><div className="absolute right-4 top-4 mono text-[10px] text-[hsl(var(--muted-foreground))]">#{String(index+1).padStart(2,"0")}</div><p className="max-w-[75%] text-sm font-semibold">{pr.name}</p><div className="display-font mt-3 text-3xl font-semibold">{formatLoad(pr.e1rm,unit)}</div><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{formatLoad(pr.weight,unit)} × {pr.reps} reps · {pr.date} · {pr.method.toUpperCase()} estimate</p><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[hsl(var(--muted))]"><div className="h-full rounded-full bg-[hsl(var(--primary))]" style={{width:`${Math.min(100,pr.e1rm/(prs[0]?.e1rm??1)*100)}%`}}/></div></div>)}</div>:<div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-8 text-center text-sm text-[hsl(var(--muted-foreground))]">PRs are estimated from logged work sets. Warm-up sets don't count.</div>}</Card>}
     {tab==="muscles"&&<MuscleActivityDashboard client={client}/>}
+    {editSession&&<Suspense fallback={<Modal title="Opening workout editor…" onClose={()=>setEditSession(null)}><p role="status">Loading editor…</p></Modal>}><SessionEditor client={client} session={editSession} onClose={()=>setEditSession(null)}/></Suspense>}
     {edit&&<ClientModal client={client} onClose={()=>setEdit(false)}/>}
-    {routineModal!==false&&<RoutineModal client={client} routine={routineModal||undefined} pool={pool} onClose={()=>setRoutineModal(false)} onDelete={routineModal?()=>ask({title:"Delete routine?",message:`Delete routine "${routineModal.name}"? Weekly plan assignments will also be cleared.`,confirmLabel:"Delete routine",onConfirm:()=>{deleteRoutine(client.id,routineModal.id);setRoutineModal(false)}}):undefined}/>}
+    {routineModal!==false&&<Suspense fallback={<Modal title="Opening routine editor…" onClose={()=>setRoutineModal(false)}><p role="status">Loading editor…</p></Modal>}><RoutineModal client={client} routine={routineModal||undefined} pool={pool} onClose={()=>setRoutineModal(false)} onDelete={routineModal?()=>ask({title:"Delete routine?",message:`Delete routine "${routineModal.name}"? Weekly plan assignments will also be cleared.`,confirmLabel:"Delete routine",onConfirm:()=>{deleteRoutine(client.id,routineModal.id);setRoutineModal(false)}}):undefined}/></Suspense>}
     {confirmNode}
   </>;
-}
-
-function RoutineModal({ client, routine, pool, onClose, onDelete }: {client:Client;routine?:Routine;pool:CatalogExercise[];onClose:()=>void;onDelete?:()=>void}) {
-  const saveRoutine=useFloor(s=>s.saveRoutine);
-  const savedCustom=useFloor(s=>s.custom);
-  const [name,setName]=useState(routine?.name??"");
-  const [group,setGroup]=useState(routine?.group??"Custom");
-  const [exerciseIds,setExerciseIds]=useState<string[]>(routine?.exerciseIds??[]);
-  const [filter,setFilter]=useState("");
-  const [error,setError]=useState("");
-  const available=[...pool.filter(ex=>!savedCustom.some(custom=>custom.id===ex.id)),...savedCustom];
-  const selected=available.filter(e=>exerciseIds.includes(e.id));
-  const matches=available.filter(e=>e.name.toLowerCase().includes(filter.toLowerCase())||e.primary.toLowerCase().includes(filter.toLowerCase())).slice(0,12);
-  const updateCount=(id:string,value:number)=>setCounts(c=>({...c,[id]:Math.max(1,value)}));
-  const [counts,setCounts]=useState<Record<string,number>>(routine?.sets??{});
-  const [restTimes,setRestTimes]=useState<Record<string,number>>(routine?.rest??{});
-  const submit=(e:FormEvent)=>{e.preventDefault();if(!name.trim()){setError("Give this routine a name.");return;} const next:Routine={id:routine?.id??uid(),name:name.trim(),group:group.trim()||"Custom",exerciseIds,sets:counts,plan:routine?.plan??{},rest:restTimes};saveRoutine(client.id,next);onClose();};
-  return <Modal title={routine?"Edit routine":"Build a routine"} onClose={onClose} wide><form onSubmit={submit}>
-    <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass} htmlFor="routine-name">Routine name</label><input id="routine-name" className={fieldClass} value={name} onChange={e=>setName(e.target.value)} placeholder="Upper body A" data-testid="input-routine-name"/></div><div><label className={labelClass} htmlFor="routine-group">Program / group</label><input id="routine-group" className={fieldClass} value={group} onChange={e=>setGroup(e.target.value)} placeholder="Strength block"/></div></div>
-    <div className="mt-5"><label className={labelClass} htmlFor="exercise-search">Add exercises</label><input id="exercise-search" className={fieldClass} value={filter} onChange={e=>setFilter(e.target.value)} placeholder="Search exercise library" data-testid="input-exercise-search"/><div className="mt-2 grid max-h-36 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2">{matches.map(ex=><button type="button" key={ex.id} disabled={exerciseIds.includes(ex.id)} onClick={()=>{setExerciseIds(ids=>ids.includes(ex.id)?ids:[...ids,ex.id]);setCounts(c=>({...c,[ex.id]:c[ex.id]??3}));}} className="flex items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs hover:bg-[hsl(var(--muted))] disabled:opacity-40" data-testid={`button-add-exercise-${ex.id}`}><span>{ex.name}<span className="ml-1 text-[10px] text-[hsl(var(--muted-foreground))]">{ex.equipment}</span></span><Plus size={13}/></button>)}</div>
-      <CustomExerciseMuscles onCreated={created=>{setExerciseIds(ids=>ids.includes(created.id)?ids:[...ids,created.id]);setCounts(c=>({...c,[created.id]:3}));}}/>
-    </div>
-    <div className="mt-5"><p className={labelClass}>Routine exercises · targets & rest</p>{selected.length?<div className="space-y-2">{selected.map((ex,index)=><div key={ex.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-[hsl(var(--background))] p-2.5"><span className="mono w-6 text-[10px] text-[hsl(var(--muted-foreground))]">{String(index+1).padStart(2,"0")}</span><span className="min-w-[120px] flex-1 truncate text-sm font-medium">{ex.name}</span><label className="mono flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]">SETS<input aria-label={`${ex.name} set count`} className={`${fieldClass} w-14 px-1.5 py-1.5 text-center`} type="number" min="1" max="20" value={counts[ex.id]??3} onChange={e=>updateCount(ex.id,Number(e.target.value))} data-testid={`input-routine-sets-${ex.id}`}/></label><label className="mono flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]">REST<input aria-label={`${ex.name} rest seconds`} className={`${fieldClass} w-16 px-1.5 py-1.5 text-center`} type="number" min="0" max="600" step="15" value={restTimes[ex.id]??90} onChange={e=>setRestTimes(times=>({...times,[ex.id]:Math.min(600,Math.max(0,Number(e.target.value)))}))} data-testid={`input-routine-rest-${ex.id}`}/><span>s</span></label><button type="button" aria-label={`Remove ${ex.name}`} className="rounded-lg p-2 text-[hsl(var(--destructive))] hover:bg-[hsl(0_80%_60%/.12)]" onClick={()=>setExerciseIds(ids=>ids.filter(id=>id!==ex.id))} data-testid={`button-remove-exercise-${ex.id}`}><X size={15}/></button></div>)}</div>:<p className="rounded-xl border border-dashed border-[hsl(var(--border))] p-4 text-center text-xs text-[hsl(var(--muted-foreground))]">Choose exercises from the library above.</p>}</div>
-    {error&&<p className="mt-3 text-sm text-[hsl(0_90%_75%)]" role="alert">{error}</p>}
-    <div className="mt-5 flex flex-wrap justify-between gap-2 border-t border-[hsl(var(--border))] pt-4">{onDelete?<button type="button" className={`${quietBtn} text-[hsl(var(--destructive))]`} onClick={onDelete} data-testid="button-delete-routine"><Trash2 size={14}/>Delete routine</button>:<span/>}<div className="ml-auto flex gap-2"><button type="button" className={quietBtn} onClick={onClose}>Cancel</button><button className={primaryBtn} type="submit" data-testid="button-save-routine"><Check size={15}/>Save routine</button></div></div>
-  </form></Modal>;
-}
-
-function WorkoutDrawer() {
-  const [ask,confirmNode]=useConfirm();
-  const draft=useFloor(s=>s.draft);
-  const clients=useFloor(s=>s.clients);
-  const unit=useFloor(s=>s.unit);
-  const logSet=useFloor(s=>s.logSet);
-  const setActive=useFloor(s=>s.setActive);
-  const addDraftExercise=useFloor(s=>s.addDraftExercise);
-  const removeDraftExercise=useFloor(s=>s.removeDraftExercise);
-  const removeSet=useFloor(s=>s.removeSet);
-  const finishSession=useFloor(s=>s.finishSession);
-  const discardDraft=useFloor(s=>s.discardDraft);
-  const [kind,setKind]=useState<"normal"|"warmup">("normal");
-  const [weight,setWeight]=useState("");
-  const [reps,setReps]=useState("");
-  const [rir,setRir]=useState("");
-  const [showAdd,setShowAdd]=useState(false);
-  const [minimized,setMinimized]=useState(false);
-  useEffect(()=>setMinimized(false),[draft?.startedAt,draft?.clientId]);
-  useEffect(()=>{
-    const resume=()=>setMinimized(false);
-    window.addEventListener("setstack:resume-workout",resume);
-    return()=>window.removeEventListener("setstack:resume-workout",resume);
-  },[]);
-  useEffect(()=>draft&&!minimized ? registerNativeBackHandler(()=>setMinimized(true)) : undefined,[draft?.startedAt,minimized]);
-  const [exerciseSearch,setExerciseSearch]=useState("");
-  const client=draft?clients.find(c=>c.id===draft.clientId):undefined;
-  const active=draft?.exercises[draft.activeIndex];
-  const pool=exercisePool();
-  useEffect(()=>{if(!draft||!client||!active)return;const prev=suggestSet(client,active.id,active.sets,unit);setWeight(String(Number(toDisplay(prev.weightKg,unit).toFixed(1))));setReps(String(prev.reps));setRir(prev.rpe==null?"":String(Number((10-prev.rpe).toFixed(1))));},[draft?.activeIndex,draft?.clientId,active?.id,unit]);
-  if(!draft||!client)return null;
-  if(minimized) return <button onClick={()=>setMinimized(false)} className={`${primaryBtn} fixed bottom-4 right-4 z-40 shadow-xl`} data-testid="button-resume-session"><Dumbbell size={16}/>Resume workout · {draft.exercises.reduce((n,e)=>n+e.sets.length,0)} sets</button>;
-  const submit=(e:FormEvent)=>{e.preventDefault();const w=Number(weight);const r=Number(reps);if(!active||r<1||w<0)return;logSet({reps:r,weight:fromDisplay(w,unit),kind,rpe:rir===""?null:10-Number(rir)});setKind("normal");};
-  const recordsFor=active?lastPerformance(client,active.id):null;
-  const oldBest=active?personalRecords(client).find(p=>p.id===active.id):undefined;
-  const filtered=pool.filter(e=>e.name.toLowerCase().includes(exerciseSearch.toLowerCase())).slice(0,10);
-  return <div className="fixed inset-x-0 bottom-0 z-40 max-h-[88dvh] overflow-y-auto border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] shadow-[0_-12px_45px_rgba(0,0,0,.4)] sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[min(560px,calc(100vw-2rem))] sm:rounded-3xl sm:border sm:shadow-2xl" data-testid="panel-workout-logger">{confirmNode}
-    <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 py-3 backdrop-blur"><div className="min-w-0"><div className="mono break-words text-[9px] uppercase tracking-[.18em] text-[hsl(var(--chart-1))]">Live session · {client.name}</div><h2 className="display-font mt-0.5 text-lg font-semibold">{draft.name}</h2></div><div className="flex shrink-0 gap-1"><button className="rounded-lg p-2 hover:bg-[hsl(var(--muted))]" onClick={()=>setShowAdd(!showAdd)} aria-label="Add exercise" data-testid="button-logger-add-exercise"><Plus size={17}/></button><button className="rounded-lg p-2 hover:bg-[hsl(var(--muted))]" onClick={()=>setMinimized(true)} aria-label="Minimize workout without discarding it" data-testid="button-minimize-session"><ChevronDown size={17}/></button><button className="rounded-lg p-2 hover:bg-[hsl(var(--muted))]" onClick={()=>ask({title:"Discard workout?",message:"Discard this unfinished workout?",confirmLabel:"Discard",onConfirm:()=>discardDraft()})} aria-label="Discard workout" data-testid="button-discard-session"><X size={17}/></button></div></div>
-    <div className="p-4 sm:p-5">
-      {showAdd&&<div className="mb-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3"><label className={labelClass} htmlFor="logger-exercise-search">Find an exercise</label><input id="logger-exercise-search" className={fieldClass} value={exerciseSearch} onChange={e=>setExerciseSearch(e.target.value)} placeholder="Type an exercise" data-testid="input-logger-exercise"/><div className="mt-2 max-h-32 overflow-y-auto">{filtered.map(ex=><button key={ex.id} className="block w-full rounded-lg px-2 py-2 text-left text-xs hover:bg-[hsl(var(--muted))]" onClick={()=>{addDraftExercise(ex);setShowAdd(false);setExerciseSearch("")}} data-testid={`button-logger-exercise-${ex.id}`}>{ex.name}</button>)}</div></div>}
-      {draft.exercises.length===0?<div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-6 text-center"><Dumbbell className="mx-auto text-[hsl(var(--muted-foreground))]" size={24}/><p className="mt-2 text-sm font-semibold">Make this session yours</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Add the first exercise to start logging.</p><button className={`${primaryBtn} mt-3`} onClick={()=>setShowAdd(true)}><Plus size={15}/>Add exercise</button></div>:<>
-        <div className="mb-4 flex gap-2 overflow-x-auto">{draft.exercises.map((ex,index)=><button key={`${ex.id}-${index}`} onClick={()=>setActive(index)} className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs ${index===draft.activeIndex?"bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]":"bg-[hsl(var(--muted))]"}`} data-testid={`button-select-logger-exercise-${index}`}><span className="block max-w-36 truncate font-semibold">{ex.name}</span><span className="mono mt-1 block opacity-70">{ex.sets.length} sets</span></button>)}</div>
-        {active&&<><div className="mb-3 flex items-start justify-between"><div><h3 className="display-font text-xl font-semibold">{active.name}</h3><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{recordsFor?`Last: ${shortDate(recordsFor.date)} · ${recordsFor.sets.map(s=>`${formatLoad(s.weight,unit)} × ${s.reps}`).join(" / ")}`:"No previous performance"}{oldBest&&` · PR ${formatLoad(oldBest.e1rm,unit)} e1RM`}</p></div><button className="rounded-lg p-2 text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))]" onClick={()=>ask({title:"Remove exercise?",message:`Remove ${active.name} from this session?`,confirmLabel:"Remove",onConfirm:()=>removeDraftExercise(draft.activeIndex)})} aria-label={`Remove ${active.name}`} data-testid="button-remove-draft-exercise"><Trash2 size={15}/></button></div>
-          {!!active.sets.length&&<div className="mb-3 space-y-1.5">{active.sets.map((set,index)=><div key={set.id} className="flex items-center gap-2 rounded-lg bg-[hsl(var(--background))] px-3 py-2 text-xs"><span className="mono w-6 text-[hsl(var(--muted-foreground))]">{String(index+1).padStart(2,"0")}</span><span className="flex-1 font-medium">{formatLoad(set.weight,unit)} × {set.reps}<span className="ml-2 text-[hsl(var(--muted-foreground))]">{set.kind==="warmup"?"Warm-up":set.rpe==null?"":`RIR ${(10-set.rpe).toFixed(set.rpe%1?1:0)}`}</span></span><button onClick={()=>removeSet(draft.activeIndex,set.id)} aria-label={`Remove set ${index+1}`} className="p-1 text-[hsl(var(--muted-foreground))]" data-testid={`button-remove-set-${set.id}`}><X size={14}/></button></div>)}</div>}
-          <div className="mb-3 flex rounded-lg bg-[hsl(var(--muted))] p-1"><button onClick={()=>setKind("normal")} className={`flex-1 rounded-md py-1.5 text-xs font-semibold ${kind==="normal"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-set-kind-work">Work set</button><button onClick={()=>setKind("warmup")} className={`flex-1 rounded-md py-1.5 text-xs font-semibold ${kind==="warmup"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-set-kind-warmup">Warm-up</button></div>
-          <form onSubmit={submit}><div className="grid grid-cols-3 gap-2"><div><label className={labelClass} htmlFor="set-weight">Load · {unit}</label><input id="set-weight" className={fieldClass} type="number" min="0" step=".5" inputMode="decimal" value={weight} onChange={e=>setWeight(e.target.value)} data-testid="input-set-weight"/></div><div><label className={labelClass} htmlFor="set-reps">Reps</label><input id="set-reps" className={fieldClass} type="number" min="1" max="100" inputMode="numeric" value={reps} onChange={e=>setReps(e.target.value)} data-testid="input-set-reps"/></div><div><label className={labelClass} htmlFor="set-rir">RIR <span className="font-normal">(optional)</span></label><input id="set-rir" className={fieldClass} type="number" min="0" max="10" step=".5" inputMode="decimal" value={rir} onChange={e=>setRir(e.target.value)} placeholder="—" data-testid="input-set-rir"/></div></div><button type="submit" disabled={!reps||Number(reps)<1} className={`${primaryBtn} mt-3 w-full`} data-testid="button-log-set"><Plus size={16}/>Log {kind==="warmup"?"warm-up":"work"} set</button></form></>}
-      </>}
-      <div className="mt-4 flex items-center justify-between border-t border-[hsl(var(--border))] pt-3"><p className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{draft.exercises.reduce((n,e)=>n+e.sets.length,0)} sets logged</p><button className={`${primaryBtn} min-h-9`} onClick={()=>{const result=finishSession();if(result){}}} data-testid="button-finish-session"><Check size={15}/>Finish workout</button></div>
-    </div>
-  </div>;
 }
 
 function SettingsPage() {

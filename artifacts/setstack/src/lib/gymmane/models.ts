@@ -70,4 +70,17 @@ export type Draft = {
   restUntil: number | null;
   activeIndex: number;
   exercises: ExerciseLog[];
+  entries?: Record<string, DraftEntry>;
+  restPausedSeconds?: number | null;
+  restDurationSeconds?: number;
+  restOverrideSeconds?: number;
+  timerSound?: boolean;
+  timerVibration?: boolean;
+};
+
+export type DraftEntry = {
+  weightKg: number | null;
+  reps: number | null;
+  rir: number | null;
+  kind: "normal" | "warmup";
 };

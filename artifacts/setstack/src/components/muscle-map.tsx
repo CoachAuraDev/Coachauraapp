@@ -1,14 +1,8 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
+import { coachAuraWorkloadColor, COACHAURA_WORKLOAD_LEGEND } from "@/lib/gymmane/muscle-intensity-colors";
 import type { MuscleActivity, MuscleGroup, MuscleIntensity, MuscleView } from "@/lib/gymmane/muscle-activity";
 
-const FILL: Record<MuscleIntensity, string> = {
-  none: "#5f6872",
-  low: "#8ed3f7",
-  moderate: "#3a7be0",
-  high: "#f58220",
-  "very-high": "#dc2f2f",
-};
 const INTENSITY_LABEL: Record<MuscleIntensity, string> = {
   none: "No recorded work",
   low: "Low",
@@ -16,7 +10,6 @@ const INTENSITY_LABEL: Record<MuscleIntensity, string> = {
   high: "High",
   "very-high": "Very high",
 };
-const LEGEND: MuscleIntensity[] = ["none", "low", "moderate", "high", "very-high"];
 
 // Left half of the figure only (x < 100); each path is mirrored across x = 100 for the right side.
 const TORSO = "M99 60 C88 62 78 64 72 70 C68 90 70 120 74 140 C76 160 72 178 72 192 L99 196Z";
@@ -88,6 +81,9 @@ export function MuscleMap({
   const [view, setView] = useState<MuscleView>("front");
   const byId = useMemo(() => new Map(muscles.map((m) => [m.id, m])), [muscles]);
   const intensityOf = (id: MuscleGroup): MuscleIntensity => byId.get(id)?.intensity ?? "none";
+  const colorOf = (id: MuscleGroup) => coachAuraWorkloadColor(byId.get(id)?.weeklyEquivalent ?? 0);
+  const describe = (id: MuscleGroup, label: string) =>
+    `${label}: ${INTENSITY_LABEL[intensityOf(id)]}, ${(byId.get(id)?.weeklyEquivalent ?? 0).toFixed(2)} weighted sets/week`;
   const visible = MUSCLE_GROUPS.filter((g) => (g.views as readonly MuscleView[]).includes(view));
 
   const keyHandler = (id: MuscleGroup) => (e: KeyboardEvent) => {
@@ -148,17 +144,17 @@ export function MuscleMap({
               role="button"
               tabIndex={0}
               aria-pressed={selected}
-              aria-label={`${label}: ${INTENSITY_LABEL[intensity]}`}
+              aria-label={describe(id, label)}
               data-testid={`region-muscle-${id}`}
               data-intensity={intensity}
               onClick={() => onSelect(id)}
               onKeyDown={keyHandler(id)}
-              fill={FILL[intensity]}
+              fill={colorOf(id)}
               stroke={selected ? "#ffffff" : "#17171B"}
               strokeWidth={selected ? 2.4 : 1.2}
               strokeLinejoin="round"
             >
-              <title>{`${label}: ${INTENSITY_LABEL[intensity]}`}</title>
+              <title>{describe(id, label)}</title>
               {UNDERLAY[view]?.[id] && (
                 <g fillOpacity={0.35} stroke="none">
                   <path d={UNDERLAY[view]![id]} />
@@ -191,7 +187,7 @@ export function MuscleMap({
                   selected ? "border-[#B7F34A] bg-[#222228]" : "border-[#303036] bg-[#0B0B0D]"
                 }`}
               >
-                <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full" style={{ background: FILL[intensity] }} />
+                <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-[#303036]" style={{ background: colorOf(id) }} />
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-semibold">{label}</span>
                   <span className="block truncate text-[10px] text-[#A1A1AA]">{INTENSITY_LABEL[intensity]}</span>
@@ -202,14 +198,15 @@ export function MuscleMap({
         })}
       </ul>
 
-      <ul className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-[#A1A1AA]" data-testid="legend-muscle-map">
-        {LEGEND.map((k) => (
-          <li key={k} className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ background: FILL[k] }} />
-            {INTENSITY_LABEL[k]}
+      <ul className="mt-4 grid grid-cols-3 gap-x-2 gap-y-3 text-xs text-[#F5F5F7]" aria-label="Weekly-equivalent workload colour scale" data-testid="legend-muscle-map">
+        {COACHAURA_WORKLOAD_LEGEND.map((item) => (
+          <li key={item.label} className="flex items-center gap-1.5">
+            <span aria-hidden="true" className="h-3.5 w-3.5 shrink-0 rounded-sm border border-[#303036]" style={{ background: item.color }} />
+            <span>{item.label}<span className="block text-[10px] text-[#A1A1AA]">{item.marker}</span></span>
           </li>
         ))}
       </ul>
+      <p className="mt-3 text-[11px] leading-relaxed text-[#A1A1AA]">Weighted sets/week. The low band blends olive to dark lime below 3; no thresholds have changed. Colours show workload, not biological recovery.</p>
     </div>
   );
 }

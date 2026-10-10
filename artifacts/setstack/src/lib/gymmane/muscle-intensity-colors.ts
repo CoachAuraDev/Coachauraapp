@@ -1,5 +1,27 @@
 // Presentation only: workload values, original heat thresholds and recovery are unchanged.
 import { lerpColor } from "./original-muscle-analytics.ts";
+import { intensityForWeeklyEquivalent } from "./muscle-activity.ts";
+
+/** CoachAura's existing weekly-equivalent categories; olive→lime is presentation
+ * within the low band only, not an additional calculation or recovery category.
+ */
+export const COACHAURA_WORKLOAD_LEGEND = [
+  { label: "Inactive", marker: "0", color: "#35353B" },
+  { label: "Very low", marker: "Near 0", color: "#45521F" },
+  { label: "Low", marker: "<3", color: "#667F25" },
+  { label: "Moderate", marker: "3–<6", color: "#86B832" },
+  { label: "High", marker: "6–<10", color: "#A5E635" },
+  { label: "Very high", marker: "≥10", color: "#C6FF57" },
+] as const;
+
+export function coachAuraWorkloadColor(weeklyEquivalent: number): string {
+  if (!Number.isFinite(weeklyEquivalent) || weeklyEquivalent <= 0) return "#35353B";
+  const intensity = intensityForWeeklyEquivalent(weeklyEquivalent);
+  if (intensity === "low") return lerpColor("#45521F", "#667F25", weeklyEquivalent / 3).toUpperCase();
+  if (intensity === "moderate") return "#86B832";
+  if (intensity === "high") return "#A5E635";
+  return "#C6FF57";
+}
 
 export const COACHAURA_INTENSITY_SCALE = [
   { label: "Inactive", value: 0, marker: "0%", color: "#35353B" },

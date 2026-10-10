@@ -3,19 +3,21 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { installProgram } from "./apply.ts";
 import { kExercises, type CatalogExercise } from "./catalog.ts";
 import { guessMuscle } from "./match.ts";
-import type { Client, Draft, ExerciseLog, Routine, SetLog } from "./models.ts";
+import type { Client, Draft, DraftEntry, ExerciseLog, Routine, SessionLog, SetLog } from "./models.ts";
+import { validLoggedSet, validSessionEdit } from "./workout-logging.ts";
 import { kProgramTemplates } from "./programs.ts";
 import { seedClients } from "./seed.ts";
 import { uid, type SetKind, type Unit } from "./engine.ts";
 import { MUSCLE_GROUPS, type MuscleGroup } from "./muscle-activity.ts";
 
-type Backup = { app: "SetStack"; version: 1; clients: Client[]; custom: CatalogExercise[] };
+type Backup = { app: "SetStack"; version: 1; clients: Client[]; custom: CatalogExercise[]; templates?: Routine[] };
 
 type FloorState = {
   clients: Client[];
   unit: Unit;
   draft: Draft | null;
   custom: CatalogExercise[];
+  templates: Routine[];
   notice: string | null;
   setUnit: (unit: Unit) => void;
   setNotice: (notice: string | null) => void;
@@ -25,6 +27,9 @@ type FloorState = {
   setRest: (id: string, seconds: number) => void;
   addBodyweight: (id: string, kg: number) => void;
   saveRoutine: (clientId: string, routine: Routine) => void;
+  saveTemplate: (routine: Routine) => void;
+  deleteTemplate: (id: string) => void;
+  assignTemplate: (clientId: string, templateId: string) => void;
   deleteRoutine: (clientId: string, routineId: string) => void;
   setPlanDay: (clientId: string, weekday: number, routineId: string | null) => void;
   clearPlan: (clientId: string) => void;
@@ -37,11 +42,18 @@ type FloorState = {
   addDraftExercise: (exercise: CatalogExercise) => void;
   removeDraftExercise: (index: number) => void;
   logSet: (set: Omit<SetLog, "id">) => void;
+  setDraftEntry: (exerciseId: string, entry: DraftEntry) => void;
+  updateDraftSet: (exerciseIndex: number, setId: string, patch: Partial<Omit<SetLog, "id">>) => boolean;
   removeSet: (exerciseIndex: number, setId: string) => void;
   skipRest: () => void;
   bumpRest: (seconds: number) => void;
+  configureRest: (seconds: number, sound?: boolean, vibration?: boolean) => void;
+  startRest: () => void;
+  pauseRest: () => void;
+  resetRest: () => void;
   finishSession: () => string | null;
   deleteSession: (clientId: string, sessionId: string) => void;
+  updateSession: (clientId: string, session: SessionLog) => boolean;
   exportBackup: () => string;
   importBackup: (raw: string) => string;
   resetDemo: () => void;
@@ -76,6 +88,7 @@ export const useFloor = create<FloorState>()(
       unit: "kg",
       draft: null,
       custom: [],
+      templates: [],
       notice: null,
       setUnit: (unit) => set({ unit }),
       setNotice: (notice) => set({ notice }),
@@ -109,11 +122,24 @@ export const useFloor = create<FloorState>()(
             return {
               ...client,
               routines: exists
-                ? client.routines.map((item) => (item.id === routine.id ? routine : item))
-                : [...client.routines, routine],
+                ? client.routines.map((item) => (item.id === routine.id ? structuredClone(routine) : item))
+                : [...client.routines, structuredClone(routine)],
             };
           }),
         }),
+      saveTemplate: (routine) => set({
+        templates: get().templates.some((item) => item.id === routine.id)
+          ? get().templates.map((item) => item.id === routine.id ? structuredClone(routine) : item)
+          : [...get().templates, structuredClone(routine)],
+      }),
+      deleteTemplate: (id) => set({ templates: get().templates.filter((item) => item.id !== id) }),
+      assignTemplate: (clientId, templateId) => {
+        const template = get().templates.find((item) => item.id === templateId);
+        if (!template || !get().clients.some((client) => client.id === clientId)) return;
+        const routine = { ...structuredClone(template), id: uid() };
+        get().saveRoutine(clientId, routine);
+        set({ notice: `${routine.name} assigned. Client results remain independent.` });
+      },
       deleteRoutine: (clientId, routineId) =>
         set({
           clients: patchClient(get().clients, clientId, (client) => ({
@@ -176,6 +202,11 @@ export const useFloor = create<FloorState>()(
         });
       },
       startSession: (clientId, routineId) => {
+        if (get().draft) {
+          set({ notice: "Resumed the unfinished workout. Finish or explicitly discard it before starting another." });
+          if (typeof window !== "undefined") window.dispatchEvent(new Event("setstack:resume-workout"));
+          return;
+        }
         const client = get().clients.find((item) => item.id === clientId);
         if (!client) return;
         const routine = routineId ? client.routines.find((item) => item.id === routineId) : null;
@@ -199,6 +230,9 @@ export const useFloor = create<FloorState>()(
             restUntil: null,
             activeIndex: 0,
             exercises,
+            entries: {},
+            restPausedSeconds: null,
+            restDurationSeconds: routine?.rest[exercises[0]?.id ?? ""] ?? client.restSeconds,
           },
         });
       },
@@ -206,7 +240,11 @@ export const useFloor = create<FloorState>()(
       setActive: (index) => {
         const draft = get().draft;
         if (!draft) return;
-        set({ draft: { ...draft, activeIndex: Math.max(0, Math.min(draft.exercises.length - 1, index)) } });
+        const activeIndex = Math.max(0, Math.min(draft.exercises.length - 1, index));
+        const client = get().clients.find((item) => item.id === draft.clientId);
+        const routine = client?.routines.find((item) => item.id === draft.routineId);
+        const duration = draft.restOverrideSeconds ?? routine?.rest[draft.exercises[activeIndex]?.id ?? ""] ?? client?.restSeconds ?? 90;
+        set({ draft: { ...draft, activeIndex, restDurationSeconds: duration } });
       },
       addDraftExercise: (exercise) => {
         const draft = get().draft;
@@ -235,6 +273,7 @@ export const useFloor = create<FloorState>()(
         });
       },
       logSet: (entry) => {
+        if (!validLoggedSet(entry)) return;
         const draft = get().draft;
         if (!draft || draft.exercises.length === 0) return;
         const client = get().clients.find((item) => item.id === draft.clientId);
@@ -245,14 +284,32 @@ export const useFloor = create<FloorState>()(
             : exercise,
         );
         const active = exercises[draft.activeIndex];
-        const rest = active ? (routine?.rest[active.id] ?? client?.restSeconds ?? 90) : 0;
+        const rest = active ? (draft.restOverrideSeconds ?? routine?.rest[active.id] ?? client?.restSeconds ?? 90) : 0;
         set({
           draft: {
             ...draft,
             exercises,
             restUntil: rest > 0 ? Date.now() + rest * 1000 : null,
+            restDurationSeconds: rest,
+            restPausedSeconds: null,
+            entries: Object.fromEntries(Object.entries(draft.entries ?? {}).filter(([id]) => id !== active?.id)),
           },
         });
+      },
+      setDraftEntry: (exerciseId, entry) => {
+        const draft = get().draft;
+        if (!draft || !draft.exercises.some((exercise) => exercise.id === exerciseId)) return;
+        set({ draft: { ...draft, entries: { ...draft.entries, [exerciseId]: { ...entry } } } });
+      },
+      updateDraftSet: (exerciseIndex, setId, patch) => {
+        const draft = get().draft;
+        const original = draft?.exercises[exerciseIndex]?.sets.find((item) => item.id === setId);
+        if (!draft || !original) return false;
+        const next = { ...original, ...patch, id: original.id };
+        if (!validLoggedSet(next)) return false;
+        set({ draft: { ...draft, exercises: draft.exercises.map((exercise, index) =>
+          index === exerciseIndex ? { ...exercise, sets: exercise.sets.map((item) => item.id === setId ? next : item) } : exercise) } });
+        return true;
       },
       removeSet: (exerciseIndex, setId) => {
         const draft = get().draft;
@@ -270,12 +327,36 @@ export const useFloor = create<FloorState>()(
       },
       skipRest: () => {
         const draft = get().draft;
-        if (draft) set({ draft: { ...draft, restUntil: null } });
+        if (draft) set({ draft: { ...draft, restUntil: null, restPausedSeconds: null } });
       },
       bumpRest: (seconds) => {
         const draft = get().draft;
         if (!draft?.restUntil) return;
         set({ draft: { ...draft, restUntil: draft.restUntil + seconds * 1000 } });
+      },
+      configureRest: (seconds, sound, vibration) => {
+        const draft = get().draft;
+        if (!draft || !Number.isFinite(seconds)) return;
+        const duration = Math.max(0, Math.min(600, Math.round(seconds)));
+        set({ draft: { ...draft, restDurationSeconds: duration, restOverrideSeconds: duration,
+          ...(sound == null ? {} : { timerSound: sound }),
+          ...(vibration == null ? {} : { timerVibration: vibration }) } });
+      },
+      startRest: () => {
+        const draft = get().draft;
+        if (!draft) return;
+        const client = get().clients.find((item) => item.id === draft.clientId);
+        const seconds = draft.restPausedSeconds ?? draft.restDurationSeconds ?? client?.restSeconds ?? 90;
+        set({ draft: { ...draft, restUntil: seconds > 0 ? Date.now() + seconds * 1000 : null, restPausedSeconds: null } });
+      },
+      pauseRest: () => {
+        const draft = get().draft;
+        if (!draft?.restUntil) return;
+        set({ draft: { ...draft, restPausedSeconds: Math.max(0, Math.ceil((draft.restUntil - Date.now()) / 1000)), restUntil: null } });
+      },
+      resetRest: () => {
+        const draft = get().draft;
+        if (draft) set({ draft: { ...draft, restUntil: null, restPausedSeconds: null } });
       },
       finishSession: () => {
         const draft = get().draft;
@@ -312,8 +393,17 @@ export const useFloor = create<FloorState>()(
             sessions: client.sessions.filter((session) => session.id !== sessionId),
           })),
         }),
+      updateSession: (clientId, session) => {
+        const client = get().clients.find((item) => item.id === clientId);
+        const previous = client?.sessions.find((item) => item.id === session.id);
+        if (!previous || !validSessionEdit(session, previous)) return false;
+        set({ clients: patchClient(get().clients, clientId, (item) => ({
+          ...item, sessions: item.sessions.map((saved) => saved.id === session.id ? structuredClone(session) : saved),
+        })) });
+        return true;
+      },
       exportBackup: () => {
-        const payload: Backup = { app: "SetStack", version: 1, clients: get().clients, custom: get().custom };
+        const payload: Backup = { app: "SetStack", version: 1, clients: get().clients, custom: get().custom, templates: get().templates };
         return JSON.stringify(payload, null, 2);
       },
       importBackup: (raw) => {
@@ -328,10 +418,11 @@ export const useFloor = create<FloorState>()(
         const clients = body.filter(isClient);
         if (clients.length === 0) return "No valid client profiles were found.";
         const custom = isRecord(parsed) && Array.isArray(parsed.custom) ? parsed.custom.filter(isExercise) : get().custom;
-        set({ clients, custom, draft: null, notice: `Restored ${clients.length} client${clients.length === 1 ? "" : "s"}.` });
+        const templates = isRecord(parsed) && Array.isArray(parsed.templates) ? parsed.templates.filter(isRoutine) : get().templates;
+        set({ clients, custom, templates, draft: null, notice: `Restored ${clients.length} client${clients.length === 1 ? "" : "s"}.` });
         return "";
       },
-      resetDemo: () => set({ clients: seedClients(), custom: [], draft: null, notice: "Demo floor reloaded." }),
+      resetDemo: () => set({ clients: seedClients(), custom: [], templates: [], draft: null, notice: "Demo floor reloaded." }),
     }),
     {
       name: "setstack-v1",
@@ -342,10 +433,18 @@ export const useFloor = create<FloorState>()(
         unit: state.unit,
         draft: state.draft,
         custom: state.custom,
+        templates: state.templates,
       }),
     },
   ),
 );
+
+function isRoutine(value: unknown): value is Routine {
+  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string" &&
+    typeof value.group === "string" && Array.isArray(value.exerciseIds) &&
+    value.exerciseIds.every((id) => typeof id === "string") &&
+    isRecord(value.sets) && isRecord(value.plan) && isRecord(value.rest);
+}
 
 function isExercise(value: unknown): value is CatalogExercise {
   if (!isRecord(value)) return false;

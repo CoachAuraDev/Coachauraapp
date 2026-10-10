@@ -36,3 +36,14 @@ the earlier requirement to expose the exact upstream visualisations in profiles.
 **How to apply:** Show only the existing CoachAura dashboard in client Muscle
 Activity. Do not reintroduce the original/detailed view selector or upstream
 graph there. Retain applicable GPL attribution and preserve stored workout data.
+
+CoachAura's active dashboard also uses the requested six-colour dark/lime
+workload presentation. Its five calculated categories must remain unchanged;
+the two darkest trained colours blend within the existing low category.
+
+**Why:** The user repeated the colour-only request after selecting the CoachAura
+dashboard and expressly required unchanged calculations, filters and interactions.
+
+**How to apply:** Preserve the active dashboard's lime workload presentation and
+keep its recovery estimates separate. Do not restore the old blue/orange/red
+workload colours when maintaining the CoachAura view.
