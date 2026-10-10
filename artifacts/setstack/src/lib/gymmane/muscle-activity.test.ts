@@ -134,7 +134,8 @@ test("seven- and thirty-day views use completed logs, exclude warm-ups, and show
   assert.equal(thirtyDay.effectiveSetEquivalents, 4.25);
   assert.equal(thirtyDay.selectedPeriodSessions, 2);
   assert.ok(Math.abs(thirtyDay.weeklyEquivalent - (4.25 * 7) / 30) < 1e-9);
-  assert.equal(thirtyDay.startDate, undefined);
+  assert.equal(analyzeMuscleActivity(client(sessions), kExercises, 7, today).startDate, "2025-03-24");
+  assert.equal(analyzeMuscleActivity(client(sessions), kExercises, 30, today).startDate, "2025-03-01");
 });
 
 test("secondary muscles receive half set-equivalents while raw sets remain separately countable", () => {
