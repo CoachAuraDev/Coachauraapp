@@ -1,0 +1,353 @@
+import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { installProgram } from "./apply.ts";
+import { kExercises, type CatalogExercise } from "./catalog.ts";
+import { guessMuscle } from "./match.ts";
+import type { Client, Draft, ExerciseLog, Routine, SetLog } from "./models.ts";
+import { kProgramTemplates } from "./programs.ts";
+import { seedClients } from "./seed.ts";
+import { uid, type SetKind, type Unit } from "./engine.ts";
+
+type Backup = { app: "SetStack"; version: 1; clients: Client[]; custom: CatalogExercise[] };
+
+type FloorState = {
+  clients: Client[];
+  unit: Unit;
+  draft: Draft | null;
+  custom: CatalogExercise[];
+  notice: string | null;
+  setUnit: (unit: Unit) => void;
+  setNotice: (notice: string | null) => void;
+  addClient: (client: Client) => void;
+  updateClient: (id: string, patch: Partial<Client>) => void;
+  deleteClient: (id: string) => void;
+  setRest: (id: string, seconds: number) => void;
+  addBodyweight: (id: string, kg: number) => void;
+  saveRoutine: (clientId: string, routine: Routine) => void;
+  deleteRoutine: (clientId: string, routineId: string) => void;
+  setPlanDay: (clientId: string, weekday: number, routineId: string | null) => void;
+  clearPlan: (clientId: string) => void;
+  assignProgram: (clientId: string, templateId: string) => void;
+  addCustom: (name: string) => CatalogExercise;
+  startSession: (clientId: string, routineId: string | null) => void;
+  discardDraft: () => void;
+  setActive: (index: number) => void;
+  addDraftExercise: (exercise: CatalogExercise) => void;
+  removeDraftExercise: (index: number) => void;
+  logSet: (set: Omit<SetLog, "id">) => void;
+  removeSet: (exerciseIndex: number, setId: string) => void;
+  skipRest: () => void;
+  bumpRest: (seconds: number) => void;
+  finishSession: () => string | null;
+  deleteSession: (clientId: string, sessionId: string) => void;
+  exportBackup: () => string;
+  importBackup: (raw: string) => string;
+  resetDemo: () => void;
+};
+
+function memoryStorage(): Storage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    getItem: (key) => data.get(key) ?? null,
+    key: (index) => [...data.keys()][index] ?? null,
+    removeItem: (key) => data.delete(key),
+    setItem: (key, value) => data.set(key, value),
+  };
+}
+
+function patchClient(clients: Client[], id: string, update: (client: Client) => Client): Client[] {
+  return clients.map((client) => (client.id === id ? update(client) : client));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+export const useFloor = create<FloorState>()(
+  persist(
+    (set, get) => ({
+      clients: seedClients(),
+      unit: "kg",
+      draft: null,
+      custom: [],
+      notice: null,
+      setUnit: (unit) => set({ unit }),
+      setNotice: (notice) => set({ notice }),
+      addClient: (client) => set({ clients: [client, ...get().clients] }),
+      updateClient: (id, patch) =>
+        set({ clients: patchClient(get().clients, id, (client) => ({ ...client, ...patch, id: client.id })) }),
+      deleteClient: (id) =>
+        set({
+          clients: get().clients.filter((client) => client.id !== id),
+          draft: get().draft?.clientId === id ? null : get().draft,
+        }),
+      setRest: (id, seconds) =>
+        set({
+          clients: patchClient(get().clients, id, (client) => ({
+            ...client,
+            restSeconds: seconds <= 0 ? 0 : Math.min(600, Math.max(15, seconds)),
+          })),
+        }),
+      addBodyweight: (id, kg) =>
+        set({
+          clients: patchClient(get().clients, id, (client) => ({
+            ...client,
+            weightKg: kg,
+            bodyweight: [...client.bodyweight, { date: new Date().toISOString().slice(0, 10), kg }],
+          })),
+        }),
+      saveRoutine: (clientId, routine) =>
+        set({
+          clients: patchClient(get().clients, clientId, (client) => {
+            const exists = client.routines.some((item) => item.id === routine.id);
+            return {
+              ...client,
+              routines: exists
+                ? client.routines.map((item) => (item.id === routine.id ? routine : item))
+                : [...client.routines, routine],
+            };
+          }),
+        }),
+      deleteRoutine: (clientId, routineId) =>
+        set({
+          clients: patchClient(get().clients, clientId, (client) => ({
+            ...client,
+            routines: client.routines.filter((routine) => routine.id !== routineId),
+            weeklyPlan: Object.fromEntries(
+              Object.entries(client.weeklyPlan).filter(([, id]) => id !== routineId),
+            ),
+          })),
+        }),
+      setPlanDay: (clientId, weekday, routineId) =>
+        set({
+          clients: patchClient(get().clients, clientId, (client) => {
+            const weeklyPlan = { ...client.weeklyPlan };
+            if (routineId) weeklyPlan[String(weekday)] = routineId;
+            else delete weeklyPlan[String(weekday)];
+            return { ...client, weeklyPlan };
+          }),
+        }),
+      clearPlan: (clientId) =>
+        set({ clients: patchClient(get().clients, clientId, (client) => ({ ...client, weeklyPlan: {} })) }),
+      assignProgram: (clientId, templateId) => {
+        const template = kProgramTemplates.find((item) => item.id === templateId);
+        const client = get().clients.find((item) => item.id === clientId);
+        if (!template || !client) return;
+        const result = installProgram(client, template, [...kExercises, ...get().custom]);
+        const missed = result.missed.length ? ` Unmatched: ${result.missed.join(", ")}.` : "";
+        const scheduled = Object.keys(client.weeklyPlan).length === 0 ? " Week filled." : " Week left unchanged.";
+        set({
+          clients: patchClient(get().clients, clientId, () => result.client),
+          notice: result.made
+            ? `${template.name}: ${result.made} routine${result.made === 1 ? "" : "s"} added.${scheduled}${missed}`
+            : `Nothing in ${template.name} matched the library.`,
+        });
+      },
+      addCustom: (name) => {
+        const exercise: CatalogExercise = {
+          id: uid(),
+          name: name.trim(),
+          primary: guessMuscle(name) ?? "other",
+          secondary: [],
+          equipment: "Other",
+          difficulty: "Beginner",
+          mode: "",
+        };
+        set({ custom: [...get().custom, exercise] });
+        return exercise;
+      },
+      startSession: (clientId, routineId) => {
+        const client = get().clients.find((item) => item.id === clientId);
+        if (!client) return;
+        const routine = routineId ? client.routines.find((item) => item.id === routineId) : null;
+        const pool = [...kExercises, ...get().custom];
+        const exercises: ExerciseLog[] = (routine?.exerciseIds ?? []).map((id) => {
+          const info = pool.find((exercise) => exercise.id === id);
+          return {
+            id,
+            name: info?.name ?? "Exercise",
+            primary: info?.primary ?? "other",
+            equipment: info?.equipment ?? "Other",
+            sets: [],
+          };
+        });
+        set({
+          draft: {
+            clientId,
+            routineId: routine?.id ?? null,
+            name: routine?.name ?? "Session",
+            startedAt: Date.now(),
+            restUntil: null,
+            activeIndex: 0,
+            exercises,
+          },
+        });
+      },
+      discardDraft: () => set({ draft: null }),
+      setActive: (index) => {
+        const draft = get().draft;
+        if (!draft) return;
+        set({ draft: { ...draft, activeIndex: Math.max(0, Math.min(draft.exercises.length - 1, index)) } });
+      },
+      addDraftExercise: (exercise) => {
+        const draft = get().draft;
+        if (!draft || draft.exercises.some((item) => item.id === exercise.id)) return;
+        const next: ExerciseLog = {
+          id: exercise.id,
+          name: exercise.name,
+          primary: exercise.primary,
+          equipment: exercise.equipment,
+          sets: [],
+        };
+        set({
+          draft: { ...draft, exercises: [...draft.exercises, next], activeIndex: draft.exercises.length },
+        });
+      },
+      removeDraftExercise: (index) => {
+        const draft = get().draft;
+        if (!draft) return;
+        const exercises = draft.exercises.filter((_, item) => item !== index);
+        set({
+          draft: {
+            ...draft,
+            exercises,
+            activeIndex: Math.max(0, Math.min(draft.activeIndex, exercises.length - 1)),
+          },
+        });
+      },
+      logSet: (entry) => {
+        const draft = get().draft;
+        if (!draft || draft.exercises.length === 0) return;
+        const client = get().clients.find((item) => item.id === draft.clientId);
+        const routine = client?.routines.find((item) => item.id === draft.routineId);
+        const exercises = draft.exercises.map((exercise, index) =>
+          index === draft.activeIndex
+            ? { ...exercise, sets: [...exercise.sets, { ...entry, id: uid() }] }
+            : exercise,
+        );
+        const active = exercises[draft.activeIndex];
+        const rest = active ? (routine?.rest[active.id] ?? client?.restSeconds ?? 90) : 0;
+        set({
+          draft: {
+            ...draft,
+            exercises,
+            restUntil: rest > 0 ? Date.now() + rest * 1000 : null,
+          },
+        });
+      },
+      removeSet: (exerciseIndex, setId) => {
+        const draft = get().draft;
+        if (!draft) return;
+        set({
+          draft: {
+            ...draft,
+            exercises: draft.exercises.map((exercise, index) =>
+              index === exerciseIndex
+                ? { ...exercise, sets: exercise.sets.filter((set) => set.id !== setId) }
+                : exercise,
+            ),
+          },
+        });
+      },
+      skipRest: () => {
+        const draft = get().draft;
+        if (draft) set({ draft: { ...draft, restUntil: null } });
+      },
+      bumpRest: (seconds) => {
+        const draft = get().draft;
+        if (!draft?.restUntil) return;
+        set({ draft: { ...draft, restUntil: draft.restUntil + seconds * 1000 } });
+      },
+      finishSession: () => {
+        const draft = get().draft;
+        if (!draft) return null;
+        const exercises = draft.exercises.filter((exercise) => exercise.sets.length > 0);
+        if (exercises.length === 0) {
+          set({ draft: null, notice: "Nothing was logged, so the session was discarded." });
+          return draft.clientId;
+        }
+        const date = new Date().toISOString().slice(0, 10);
+        const started = new Date(draft.startedAt);
+        const localDate = `${started.getFullYear()}-${String(started.getMonth() + 1).padStart(2, "0")}-${String(started.getDate()).padStart(2, "0")}`;
+        const session = {
+          id: uid(),
+          date: localDate || date,
+          durationSec: Math.max(60, Math.round((Date.now() - draft.startedAt) / 1000)),
+          name: draft.name,
+          routineId: draft.routineId,
+          exercises,
+        };
+        set({
+          draft: null,
+          clients: patchClient(get().clients, draft.clientId, (client) => ({
+            ...client,
+            sessions: [...client.sessions, session],
+          })),
+        });
+        return draft.clientId;
+      },
+      deleteSession: (clientId, sessionId) =>
+        set({
+          clients: patchClient(get().clients, clientId, (client) => ({
+            ...client,
+            sessions: client.sessions.filter((session) => session.id !== sessionId),
+          })),
+        }),
+      exportBackup: () => {
+        const payload: Backup = { app: "SetStack", version: 1, clients: get().clients, custom: get().custom };
+        return JSON.stringify(payload, null, 2);
+      },
+      importBackup: (raw) => {
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          return "That file is not JSON.";
+        }
+        const body = isRecord(parsed) && Array.isArray(parsed.clients) ? parsed.clients : Array.isArray(parsed) ? parsed : null;
+        if (!body) return "No clients were found in that file.";
+        const clients = body.filter(isClient);
+        if (clients.length === 0) return "No valid client profiles were found.";
+        const custom = isRecord(parsed) && Array.isArray(parsed.custom) ? parsed.custom.filter(isExercise) : get().custom;
+        set({ clients, custom, draft: null, notice: `Restored ${clients.length} client${clients.length === 1 ? "" : "s"}.` });
+        return "";
+      },
+      resetDemo: () => set({ clients: seedClients(), custom: [], draft: null, notice: "Demo floor reloaded." }),
+    }),
+    {
+      name: "setstack-v1",
+      skipHydration: true,
+      storage: createJSONStorage(() => (typeof window === "undefined" ? memoryStorage() : localStorage)),
+      partialize: (state) => ({
+        clients: state.clients,
+        unit: state.unit,
+        draft: state.draft,
+        custom: state.custom,
+      }),
+    },
+  ),
+);
+
+function isExercise(value: unknown): value is CatalogExercise {
+  if (!isRecord(value)) return false;
+  return typeof value.id === "string" && typeof value.name === "string" && typeof value.primary === "string";
+}
+
+function isClient(value: unknown): value is Client {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    Array.isArray(value.sessions) &&
+    Array.isArray(value.routines) &&
+    typeof value.sex === "string"
+  );
+}
+
+export function exercisePool(): CatalogExercise[] {
+  return [...kExercises, ...useFloor.getState().custom];
+}

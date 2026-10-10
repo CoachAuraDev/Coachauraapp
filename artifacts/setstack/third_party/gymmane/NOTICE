@@ -1,0 +1,22 @@
+SetStack's training engine is derived from GymMane.
+
+GymMane — offline gym log
+Copyright (C) InlitX and contributors
+https://github.com/InlitX/GymMane
+
+Licensed under the GNU General Public License version 3.
+The full license is in LICENSE in this directory.
+Original files kept here for attribution and so the port can be checked
+against the source:
+
+- lib/models/workout.dart — sets, sessions, routines, Epley / RTS one-rep math
+- lib/state/tools_state.dart — 1RM, BMI, Mifflin–St Jeor, US Navy, plates,
+  warm-up, RPE load, DOTS, Wilks, FFMI
+- lib/services/exercise_match.dart — exercise name matching
+- lib/catalog/exercise_aliases.dart
+- lib/catalog/program_templates.dart
+
+The TypeScript port lives in src/lib/gymmane/.
+The exercise list in src/lib/gymmane/catalog.ts was extracted from
+lib/catalog/exercise_catalog.dart (447 exercises). Exercise coaching steps
+and illustration ids were not needed for client tracking and were not copied.

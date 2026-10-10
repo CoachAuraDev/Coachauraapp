@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "SetStack"
+description = "A private, phone-friendly workspace for personal trainers to manage client profiles, build workout programs, log training performance, track bodyweight progress, and keep exportable backups."
+version = "1.0.0"
+id = "artifacts/setstack"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 23502
+
+[services.development]
+run = "pnpm --filter @workspace/setstack run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/setstack", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/setstack/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "23502"
+BASE_PATH = "/"

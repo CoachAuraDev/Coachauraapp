@@ -1,44 +1,48 @@
-# [Project name]
+# SetStack
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+SetStack helps personal trainers organize clients, assign training programs, record workout sets, review performance, and track bodyweight progress.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/setstack run dev` — run the SetStack web app (the managed workflow supplies its preview configuration)
+- `pnpm --filter @workspace/setstack run typecheck` — typecheck SetStack
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- SetStack does not currently require an API server, database, or secrets.
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- pnpm workspace, React, Vite, TypeScript
+- Zustand store persisted to browser `localStorage`
+- GymMane-derived training engine, exercise catalog, metrics, and program templates
+- Responsive web UI; no cloud sync or user accounts
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/setstack/src/App.tsx` — dashboard, client pages, workout logger, and backup/settings views
+- `artifacts/setstack/src/lib/gymmane/` — client/workout data models, persistent store, exercise catalog, programs, and training metrics
+- `artifacts/setstack/third_party/gymmane/` — upstream Dart source excerpts, GPL-3.0 license, and attribution notice
+- `artifacts/setstack/LICENSE` — GPL-3.0 license for the SetStack distribution
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Client and training data stay on the current browser/device; importing a backup replaces the current local client list.
+- Keep the existing TypeScript GymMane port as the source of workout and exercise behavior; SetStack's UI builds on its Zustand store.
+- Keep the GymMane attribution and GPL-3.0 license files with any distributed derivative.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Trainers can manage client profiles, assign and edit routines, schedule workout days, log exercises/sets/reps/load/RIR, inspect history and estimated one-rep max records, and add bodyweight measurements. A JSON backup can be downloaded and restored from Settings.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- The user is a beginner and primarily works from an Android phone; provide simple, step-by-step instructions.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Browser storage is not shared across devices or browsers and may be cleared by browser settings; export backups regularly and keep them private.
+- The uploaded project is not a Flutter/Android application: it has five standalone GymMane Dart source excerpts but no `pubspec.yaml`, Flutter entrypoint, or Android project.
+- A future Android APK needs a separate packaging/build step; this web app is not an APK.
 
 ## Pointers
 
