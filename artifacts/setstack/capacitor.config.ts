@@ -2,9 +2,9 @@ import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
   appId: "app.setstack.trainer",
-  appName: "SetStack",
+  appName: "CoachAura",
   webDir: "dist/public",
-  backgroundColor: "#f7f5ef",
+  backgroundColor: "#0B0B0D",
   // Always bundle the built app. No development URL or Replit server is required.
   server: {
     hostname: "localhost",
@@ -13,14 +13,14 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: false,
-    backgroundColor: "#f7f5ef",
+    backgroundColor: "#0B0B0D",
   },
   plugins: {
     SystemBars: {
       // Capacitor 8.5 handles system/keyboard insets natively when viewport-fit
       // is not "cover", including WebViews predating Chromium 140.
       insetsHandling: "native",
-      style: "LIGHT",
+      style: "DARK",
       hidden: false,
     },
   },

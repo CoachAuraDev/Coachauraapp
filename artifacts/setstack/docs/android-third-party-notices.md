@@ -1,12 +1,12 @@
 # Android packaging notices
 
-SetStack's GymMane-derived training code remains under GNU GPL version 3.
+CoachAura's GymMane-derived training code remains under GNU GPL version 3.
 GymMane is copyright InlitX and contributors:
 https://github.com/InlitX/GymMane
 
 The original attribution is in third_party/gymmane/NOTICE and the complete GPL
 text is in LICENSE. Android web builds copy these into bundled /legal/ assets.
-Capacitor packaging does not change SetStack's licensing. When distributing
+Capacitor packaging does not change CoachAura's licensing. When distributing
 compiled GPL-covered software to other people, provide the corresponding source
 in a GPL-compliant way, including the build scripts and any modifications.
 A paid download does not remove recipients' GPL rights.

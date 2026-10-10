@@ -1,0 +1,13 @@
+{
+  "name": "CoachAura",
+  "short_name": "CoachAura",
+  "description": "Client management, workout logging and progress tracking for personal trainers.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0B0B0D",
+  "theme_color": "#0B0B0D",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

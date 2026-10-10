@@ -100,10 +100,10 @@ export function MuscleMap({
   return (
     <div
       data-testid="muscle-map"
-      className="w-full rounded-2xl border border-[#2c3a37] bg-[#0f1716] p-3 text-[#e9e4d6] sm:p-4"
+      className="w-full rounded-2xl border border-[#303036] bg-[#17171B] p-3 text-[#F5F5F7] sm:p-4"
     >
       <style>{`.mm-region{cursor:pointer;outline:none}.mm-region path{transition:opacity .15s}.mm-region:hover path{opacity:.82}.mm-region:focus-visible path{stroke:#fff;stroke-width:2.2}`}</style>
-      <div role="tablist" aria-label="Body view" className="mx-auto mb-3 grid max-w-xs grid-cols-2 gap-1 rounded-xl bg-[#1a2523] p-1">
+      <div role="tablist" aria-label="Body view" className="mx-auto mb-3 grid max-w-xs grid-cols-2 gap-1 rounded-xl bg-[#0B0B0D] p-1">
         {(["front", "back"] as const).map((v) => (
           <button
             key={v}
@@ -113,7 +113,7 @@ export function MuscleMap({
             onClick={() => setView(v)}
             data-testid={`button-muscle-view-${v}`}
             className={`min-h-10 rounded-lg text-sm font-semibold capitalize ${
-              view === v ? "bg-[#f2b84b] text-[#14201d]" : "text-[#b9b6a8]"
+              view === v ? "bg-[#B7F34A] text-[#0B0B0D]" : "text-[#A1A1AA]"
             }`}
           >
             {v}
@@ -128,7 +128,7 @@ export function MuscleMap({
         data-testid={`svg-muscle-map-${view}`}
         className="mx-auto block h-auto max-h-[70dvh] w-full max-w-[300px]"
       >
-        <g fill="#26312f" stroke="#33423f" strokeWidth="1">
+        <g fill="#2a2a31" stroke="#3a3a42" strokeWidth="1">
           {BODY_BASE[view].map((d, i) => (
             <g key={i}>
               <path d={d} />
@@ -154,7 +154,7 @@ export function MuscleMap({
               onClick={() => onSelect(id)}
               onKeyDown={keyHandler(id)}
               fill={FILL[intensity]}
-              stroke={selected ? "#ffffff" : "#0f1716"}
+              stroke={selected ? "#ffffff" : "#17171B"}
               strokeWidth={selected ? 2.4 : 1.2}
               strokeLinejoin="round"
             >
@@ -188,13 +188,13 @@ export function MuscleMap({
                 aria-pressed={selected}
                 data-testid={`button-muscle-${id}`}
                 className={`flex min-h-11 w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left ${
-                  selected ? "border-[#f2b84b] bg-[#1f2c29]" : "border-[#2c3a37] bg-[#141f1d]"
+                  selected ? "border-[#B7F34A] bg-[#222228]" : "border-[#303036] bg-[#0B0B0D]"
                 }`}
               >
                 <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full" style={{ background: FILL[intensity] }} />
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-semibold">{label}</span>
-                  <span className="block truncate text-[10px] text-[#a9a798]">{INTENSITY_LABEL[intensity]}</span>
+                  <span className="block truncate text-[10px] text-[#A1A1AA]">{INTENSITY_LABEL[intensity]}</span>
                 </span>
               </button>
             </li>
@@ -202,7 +202,7 @@ export function MuscleMap({
         })}
       </ul>
 
-      <ul className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-[#b9b6a8]" data-testid="legend-muscle-map">
+      <ul className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-[#A1A1AA]" data-testid="legend-muscle-map">
         {LEGEND.map((k) => (
           <li key={k} className="flex items-center gap-1.5">
             <span aria-hidden="true" className="h-2.5 w-2.5 rounded-sm" style={{ background: FILL[k] }} />

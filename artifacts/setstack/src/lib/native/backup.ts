@@ -13,8 +13,8 @@ export async function exportBackupFile(content: string, filename: string): Promi
     // Cache is permitted by Capacitor's Android FileProvider; no broad storage
     // permission is needed. The user chooses where a permanent copy is saved.
     await Share.share({
-      title: "SetStack client backup",
-      dialogTitle: "Save or share your SetStack backup",
+      title: "CoachAura client backup",
+      dialogTitle: "Save or share your CoachAura backup",
       files: [file.uri],
     });
     return "android";

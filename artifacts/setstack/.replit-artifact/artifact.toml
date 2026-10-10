@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "SetStack"
+title = "CoachAura"
 description = "A private, phone-friendly workspace for personal trainers to manage client profiles, build workout programs, log training performance, track bodyweight progress, and keep exportable backups."
 version = "1.0.0"
 id = "artifacts/setstack"

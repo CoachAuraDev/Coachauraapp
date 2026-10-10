@@ -4,9 +4,9 @@
     <application
         android:allowBackup="false"
         android:dataExtractionRules="@xml/setstack_data_extraction_rules"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/coachaura_icon"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@mipmap/coachaura_icon"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
 

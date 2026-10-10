@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Activity, ArrowUp, CircleHelp, Dumbbell, ShieldCheck, Zap } from "lucide-react";
 import { MuscleMap } from "@/components/muscle-map";
@@ -16,15 +16,15 @@ import type { Client } from "@/lib/gymmane/models";
 
 const panel = "rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] p-4 sm:p-5";
 const statusTone: Record<RecoveryStatus, string> = {
-  "no-data": "bg-stone-100 text-stone-700 dark:bg-stone-800 dark:text-stone-200",
-  recovered: "bg-emerald-100 text-emerald-900 dark:bg-emerald-900/50 dark:text-emerald-200",
-  recovering: "bg-blue-100 text-blue-900 dark:bg-blue-900/50 dark:text-blue-200",
-  "recently-trained": "bg-amber-100 text-amber-900 dark:bg-amber-900/50 dark:text-amber-200",
-  "high-recent-workload": "bg-red-100 text-red-900 dark:bg-red-900/50 dark:text-red-200",
+  "no-data": "bg-[hsl(240_5%_20%)] text-[hsl(240_5%_72%)]",
+  recovered: "bg-[hsl(84_80%_62%/.14)] text-[hsl(84_80%_72%)]",
+  recovering: "bg-[hsl(205_90%_60%/.16)] text-[hsl(205_95%_78%)]",
+  "recently-trained": "bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_72%)]",
+  "high-recent-workload": "bg-[hsl(0_80%_60%/.16)] text-[hsl(0_90%_78%)]",
 };
 const intensityLabel = { none: "No recorded work", low: "Low", moderate: "Moderate", high: "High", "very-high": "Very high" };
 
-export function MuscleActivityDashboard({ client }: { client: Client }) {
+function CoachAuraDetailedMuscleActivity({ client }: { client: Client }) {
   const clients = useFloor((state) => state.clients);
   const custom = useFloor((state) => state.custom);
   const startSession = useFloor((state) => state.startSession);
@@ -90,7 +90,7 @@ export function MuscleActivityDashboard({ client }: { client: Client }) {
       <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Finish a workout for {client.name} to build this map. Unfinished workouts and warm-up-only sessions do not add workload. You can also check the 30-day view for earlier sessions.</p>
       <button type="button" onClick={() => startSession(client.id, client.routines[0]?.id ?? null)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[hsl(var(--primary))] px-4 text-sm font-semibold text-[hsl(var(--primary-foreground))]" data-testid="button-muscle-start-session"><Zap size={16}/>Start workout</button>
     </div>}
-    {result.unmappedExercises.length > 0 && <div className="rounded-xl border border-amber-400/40 bg-amber-100 p-4 text-sm text-amber-950 dark:bg-amber-950/40 dark:text-amber-100" data-testid="warning-unmapped-exercises">
+    {result.unmappedExercises.length > 0 && <div className="rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-4 text-sm text-[hsl(38_95%_80%)]" data-testid="warning-unmapped-exercises">
       <p className="font-semibold">Some working sets have no muscle mapping</p>
       <p className="mt-1">{result.unmappedExercises.join(", ")}. These sets are included in the logged-set total, but not coloured on the map. Assign their primary and secondary groups in the routine editor’s custom-exercise section.</p>
     </div>}
@@ -142,4 +142,19 @@ export function MuscleActivityDashboard({ client }: { client: Client }) {
       </div>
     </details>
   </section>;
+}
+
+const GymManeMuscleAnalytics = lazy(() => import("@/components/gymmane-muscle-analytics"));
+
+export function MuscleActivityDashboard({ client }: { client: Client }) {
+  const [view, setView] = useState<"original" | "detailed">("original");
+  return <div className="space-y-5" data-testid="muscle-activity-views">
+    <div role="group" aria-label="Analytics view" className="inline-flex rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-1">
+      <button type="button" aria-pressed={view === "original"} onClick={() => setView("original")} data-testid="button-view-original-gymmane" className={`min-h-10 rounded-lg px-4 text-sm font-semibold ${view === "original" ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" : ""}`}>Original GymMane</button>
+      <button type="button" aria-pressed={view === "detailed"} onClick={() => setView("detailed")} data-testid="button-view-coachaura-detailed" className={`min-h-10 rounded-lg px-4 text-sm font-semibold ${view === "detailed" ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" : ""}`}>CoachAura detailed view</button>
+    </div>
+    {view === "original"
+      ? <Suspense fallback={<div className="h-96 animate-pulse rounded-2xl bg-[hsl(var(--muted))]" data-testid="loading-gymmane-analytics"/>}><GymManeMuscleAnalytics client={client}/></Suspense>
+      : <CoachAuraDetailedMuscleActivity client={client}/>}
+  </div>;
 }

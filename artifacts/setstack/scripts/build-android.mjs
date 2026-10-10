@@ -18,7 +18,7 @@ if (result.status !== 0) process.exit(result.status ?? 1);
 
 const legal = path.join(root, "dist/public/legal");
 mkdirSync(legal, { recursive: true });
-copyFileSync(path.join(root, "LICENSE"), path.join(legal, "SetStack-GPL-3.0.txt"));
+copyFileSync(path.join(root, "LICENSE"), path.join(legal, "CoachAura-GPL-3.0.txt"));
 copyFileSync(path.join(root, "third_party/gymmane/NOTICE"), path.join(legal, "GymMane-NOTICE.txt"));
 copyFileSync(path.join(root, "docs/android-third-party-notices.md"), path.join(legal, "Android-third-party-notices.txt"));
 for (const name of ["core", "android", "app", "filesystem", "share"]) {

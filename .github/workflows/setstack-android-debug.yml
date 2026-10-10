@@ -1,4 +1,4 @@
-name: Build SetStack debug APK
+name: Build CoachAura debug APK
 
 on:
   workflow_dispatch:
@@ -48,7 +48,7 @@ jobs:
       - name: Downloadable APK
         uses: actions/upload-artifact@v6
         with:
-          name: SetStack-debug-APK
+          name: CoachAura-debug-APK
           path: artifacts/setstack/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
@@ -56,7 +56,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: SetStack-debug-build-logs
+          name: CoachAura-debug-build-logs
           path: |
             ${{ runner.temp }}/setstack-android-sdk.log
             ${{ runner.temp }}/setstack-gradle.log

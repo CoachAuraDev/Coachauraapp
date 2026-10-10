@@ -1,7 +1,12 @@
-# SetStack on an Android phone (debug/test build)
+# CoachAura on an Android phone (debug/test build)
 
-SetStack is the existing React/TypeScript app wrapped by Capacitor 8, **not**
+CoachAura is the existing React/TypeScript app wrapped by Capacitor 8, **not**
 a new Flutter app. The Android application ID is `app.setstack.trainer`.
+
+CoachAura is the renamed app, not a new installation. Keep this historical
+application ID and use the same signing key when installing an update.
+Do not uninstall an existing installation to force an update: that can erase
+its local data. Export a backup first.
 This is a stable testing identifier, not a verified claim to a unique
 Play Store namespace; choose an ID you control before distributing a
 release. Changing the ID later makes Android treat it as a different app
@@ -11,8 +16,10 @@ The native project is `artifacts/setstack/android/`. Capacitor bundles
 is needed when the APK opens. The optional Google web font needs a network
 connection; a system font displays the interface offline. Minimum Android
 version is 7 (API 24).
-The generated launcher artwork is Capacitor's default placeholder; replace
-it with final SetStack art before a public release.
+CoachAura uses a dark-and-lime CA monogram for its browser icon, Android
+launcher and splash screen. Android XML assets include a legacy vector icon,
+an adaptive icon and an Android 13+ monochrome layer. Verify the resulting
+icon and splash on a device in the next approved APK build.
 
 ## Easiest option from your Android phone: GitHub cloud build
 
@@ -29,16 +36,16 @@ JDK/SDK and has not produced an APK yet.
    Never commit client backup JSONs, `.env` files or signing keys.
 2. On your phone, open that GitHub repository in a **web browser** (switch
    to Desktop site if buttons are hidden). Open **Actions**, choose
-   **Build SetStack debug APK**, and tap **Run workflow** on the branch
+   **Build CoachAura debug APK**, and tap **Run workflow** on the branch
    containing the changes. If GitHub asks you to enable Actions, do so
    for this repository.
 3. Open the resulting run. Wait for a green check. Scroll to **Artifacts**
-   and download **SetStack-debug-APK**. GitHub downloads a ZIP containing
+   and download **CoachAura-debug-APK**. GitHub downloads a ZIP containing
    `app-debug.apk` (usually to your Downloads folder); extract the ZIP using
    Files on your phone.
 4. In Files, tap `app-debug.apk`. If Android asks, allow **Install unknown
    apps** for the Files/browser app you used, then tap **Install**. Only
-   install an APK you built yourself and trust. Open SetStack from the
+   install an APK you built yourself and trust. Open CoachAura from the
    launcher. The debug APK is for personal testing, not paid distribution.
 
 The workflow builds from source, runs unit checks and only uploads the APK
@@ -52,7 +59,7 @@ APK. **Export a JSON backup before uninstalling any APK**.
 
 The workflow uses Ubuntu 24.04's preinstalled SDK and Node 24-compatible
 actions. It does not use `android-actions/setup-android`. Failed SDK or
-Gradle steps upload **SetStack-debug-build-logs** under the run's Artifacts;
+Gradle steps upload **CoachAura-debug-build-logs** under the run's Artifacts;
 download that ZIP to share the actual error. Deprecation warnings alone
 do not identify a build failure.
 
@@ -109,9 +116,12 @@ on a web server rather than its own bundled app.
 
 ## Data, backup and signing safety
 
-- SetStack uses the existing Zustand state and stores clients, programs,
+- CoachAura uses the existing Zustand state and stores clients, programs,
   completed workout history, custom exercises, unit setting and any
   unfinished workout in the app WebView's **`setstack-v1` localStorage**.
+  This storage key and the legacy JSON backup-format marker intentionally
+  retain their old identifiers. CoachAura can restore existing backups;
+  newly downloaded files use the `coachaura-backup-` filename prefix.
   It is device-local; there is no account or cloud sync. Android system
   backup/device transfer is disabled for client privacy. Uninstalling,
   clearing app data or losing the device can erase it.
@@ -137,7 +147,7 @@ on a web server rather than its own bundled app.
   **outside this repository**. Do not share its passwords in chat or
   upload it here. Test the exact signed APK on real devices before
   offering it for sale.
-- SetStack contains GymMane-derived GPL-3.0 code. A paid APK still needs
+- CoachAura contains GymMane-derived GPL-3.0 code. A paid APK still needs
   attribution and the GPL licence, and buyers must receive access to the
   complete corresponding source under GPL terms. The bundled
   `legal/` directory has the licence/notice and Capacitor MIT notices;

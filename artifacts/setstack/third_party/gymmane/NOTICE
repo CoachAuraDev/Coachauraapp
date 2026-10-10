@@ -1,4 +1,4 @@
-SetStack's training engine is derived from GymMane.
+CoachAura's training engine is derived from GymMane.
 
 GymMane — offline gym log
 Copyright (C) InlitX and contributors
@@ -17,6 +17,25 @@ against the source:
 - lib/catalog/program_templates.dart
 
 The TypeScript port lives in src/lib/gymmane/.
+The original muscle analytics are ported in original-muscle-analytics.ts and
+the gymmane-* React components. Exact anatomical paths and hit regions are
+imported into src/assets/gymmane-body.json without changing their geometry.
+The upstream source snapshot for these additions is
+3478b4d91f2a68ac6853fdb02d30f0fd35528306, retained in upstream-analytics/:
+
+- lib/catalog/body_svg.dart — anatomical body paths and hit regions
+- lib/widgets/body_map.dart — heat ramps and recovery colours
+- lib/widgets/muscle_radar.dart — 12-axis monthly muscle balance radar
+- lib/screens/progress_screen.dart — map modes and muscle readouts
+- lib/state/stats_state.dart — workload and estimated recovery formulas
+- lib/state/fit_core.dart — heat thresholds and calendar helpers
+- lib/models/workout.dart and lib/models/exercise.dart — source definitions
+- lib/theme/app_colors.dart — recovery palette
+- test/muscle_map_test.dart — original workload test expectations
+
+The corresponding source, modifications and build scripts must accompany
+distribution in a GPL-compliant manner. See docs/gymmane-muscle-parity.md.
+The original upstream CREDITS.md is retained with this snapshot as well.
 The exercise list in src/lib/gymmane/catalog.ts was extracted from
 lib/catalog/exercise_catalog.dart (447 exercises). Exercise coaching steps
 and illustration ids were not needed for client tracking and were not copied.

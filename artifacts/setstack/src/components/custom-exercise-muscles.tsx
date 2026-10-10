@@ -64,14 +64,14 @@ export function CustomExerciseMuscles({ onCreated }: { onCreated: (exercise: Cat
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-xs font-semibold">Exercise name
             <input className={`${field} mt-1.5`} disabled={!!editingId} placeholder="Exercise name" {...form.register("name", { required: "Enter an exercise name.", validate: (value) => !!value.trim() || "Enter an exercise name." })} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void save(); } }} data-testid="input-custom-exercise-name"/>
-            {form.formState.errors.name && <span className="mt-1 block text-red-600" role="alert">{form.formState.errors.name.message}</span>}
+            {form.formState.errors.name && <span className="mt-1 block text-[hsl(0_90%_75%)]" role="alert">{form.formState.errors.name.message}</span>}
           </label>
           <label className="block text-xs font-semibold">Primary muscle
             <select className={`${field} mt-1.5`} {...form.register("primary", { required: "Choose a primary muscle." })} data-testid="select-custom-primary-muscle">
               <option value="">Choose a primary muscle…</option>
               {MUSCLE_GROUPS.map((group) => <option key={group.id} value={group.id}>{group.label}</option>)}
             </select>
-            {form.formState.errors.primary && <span className="mt-1 block text-red-600" role="alert">{form.formState.errors.primary.message}</span>}
+            {form.formState.errors.primary && <span className="mt-1 block text-[hsl(0_90%_75%)]" role="alert">{form.formState.errors.primary.message}</span>}
           </label>
         </div>
         <fieldset>
