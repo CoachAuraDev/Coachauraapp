@@ -2,4 +2,4 @@
 - [CoachAura dark-first design](setstack-dark-first.md) — default dark regardless of Android system theme; restrained green accents and no white startup flashes.
 - [Unfinished workout safety](unfinished-workout-safety.md) — trainer shortcuts must protect the current workout when switching clients.
 - [Browser persistence fixtures](browser-persistence-fixtures.md) — seed test storage once; unconditional init scripts reset records on reload.
-- [GymMane analytics fidelity](gymmane-analytics-fidelity.md) — reproduce actual upstream client muscle visuals and formulas; generic charts are not substitutes.
+- [Client muscle dashboard choice](gymmane-analytics-fidelity.md) — CoachAura dashboard replaces the GymMane profile graph; retain GPL attribution and stored workout data.

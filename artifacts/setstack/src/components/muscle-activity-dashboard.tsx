@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { Activity, ArrowUp, CircleHelp, Dumbbell, ShieldCheck, Zap } from "lucide-react";
 import { MuscleMap } from "@/components/muscle-map";
@@ -24,7 +24,7 @@ const statusTone: Record<RecoveryStatus, string> = {
 };
 const intensityLabel = { none: "No recorded work", low: "Low", moderate: "Moderate", high: "High", "very-high": "Very high" };
 
-function CoachAuraDetailedMuscleActivity({ client }: { client: Client }) {
+export function MuscleActivityDashboard({ client }: { client: Client }) {
   const clients = useFloor((state) => state.clients);
   const custom = useFloor((state) => state.custom);
   const startSession = useFloor((state) => state.startSession);
@@ -142,19 +142,4 @@ function CoachAuraDetailedMuscleActivity({ client }: { client: Client }) {
       </div>
     </details>
   </section>;
-}
-
-const GymManeMuscleAnalytics = lazy(() => import("@/components/gymmane-muscle-analytics"));
-
-export function MuscleActivityDashboard({ client }: { client: Client }) {
-  const [view, setView] = useState<"original" | "detailed">("original");
-  return <div className="space-y-5" data-testid="muscle-activity-views">
-    <div role="group" aria-label="Analytics view" className="inline-flex rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-1">
-      <button type="button" aria-pressed={view === "original"} onClick={() => setView("original")} data-testid="button-view-original-gymmane" className={`min-h-10 rounded-lg px-4 text-sm font-semibold ${view === "original" ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" : ""}`}>Original GymMane</button>
-      <button type="button" aria-pressed={view === "detailed"} onClick={() => setView("detailed")} data-testid="button-view-coachaura-detailed" className={`min-h-10 rounded-lg px-4 text-sm font-semibold ${view === "detailed" ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" : ""}`}>CoachAura detailed view</button>
-    </div>
-    {view === "original"
-      ? <Suspense fallback={<div className="h-96 animate-pulse rounded-2xl bg-[hsl(var(--muted))]" data-testid="loading-gymmane-analytics"/>}><GymManeMuscleAnalytics client={client}/></Suspense>
-      : <CoachAuraDetailedMuscleActivity client={client}/>}
-  </div>;
 }
