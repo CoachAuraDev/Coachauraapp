@@ -1,0 +1,51 @@
+name: Build SetStack debug APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.26.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Reuse the test signing key across builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: setstack-debug-keystore-${{ github.repository_id }}-v1
+      - run: pnpm install --frozen-lockfile
+      - name: Check calculation and data regressions
+        run: pnpm --filter @workspace/setstack run test:unit
+      - name: Build and sync the bundled web app
+        run: pnpm --filter @workspace/setstack run android:sync
+      - name: Build debug APK
+        working-directory: artifacts/setstack/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Downloadable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: SetStack-debug-APK
+          path: artifacts/setstack/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7

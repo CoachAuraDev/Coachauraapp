@@ -7,6 +7,7 @@ import type { Client, Draft, ExerciseLog, Routine, SetLog } from "./models.ts";
 import { kProgramTemplates } from "./programs.ts";
 import { seedClients } from "./seed.ts";
 import { uid, type SetKind, type Unit } from "./engine.ts";
+import { MUSCLE_GROUPS, type MuscleGroup } from "./muscle-activity.ts";
 
 type Backup = { app: "SetStack"; version: 1; clients: Client[]; custom: CatalogExercise[] };
 
@@ -28,7 +29,8 @@ type FloorState = {
   setPlanDay: (clientId: string, weekday: number, routineId: string | null) => void;
   clearPlan: (clientId: string) => void;
   assignProgram: (clientId: string, templateId: string) => void;
-  addCustom: (name: string) => CatalogExercise;
+  addCustom: (name: string, primary?: MuscleGroup, secondary?: MuscleGroup[]) => CatalogExercise;
+  updateCustomMuscles: (id: string, primary: MuscleGroup, secondary: MuscleGroup[]) => void;
   startSession: (clientId: string, routineId: string | null) => void;
   discardDraft: () => void;
   setActive: (index: number) => void;
@@ -147,18 +149,31 @@ export const useFloor = create<FloorState>()(
             : `Nothing in ${template.name} matched the library.`,
         });
       },
-      addCustom: (name) => {
+      addCustom: (name, primary, secondary = []) => {
         const exercise: CatalogExercise = {
           id: uid(),
           name: name.trim(),
-          primary: guessMuscle(name) ?? "other",
-          secondary: [],
+          primary: primary ?? guessMuscle(name) ?? "other",
+          secondary: [...new Set(secondary.filter((group) => group !== primary && MUSCLE_GROUPS.some((item) => item.id === group)))],
           equipment: "Other",
           difficulty: "Beginner",
           mode: "",
+          muscleMappingExplicit: primary != null,
         };
         set({ custom: [...get().custom, exercise] });
         return exercise;
+      },
+      updateCustomMuscles: (id, primary, secondary) => {
+        if (!MUSCLE_GROUPS.some((group) => group.id === primary)) return;
+        set({
+          custom: get().custom.map((exercise) => exercise.id === id ? {
+            ...exercise,
+            primary,
+            secondary: [...new Set(secondary.filter((group) => group !== primary && MUSCLE_GROUPS.some((item) => item.id === group)))],
+            muscleMappingExplicit: true,
+          } : exercise),
+          notice: "Custom exercise muscle mapping saved. Historical analytics use this mapping.",
+        });
       },
       startSession: (clientId, routineId) => {
         const client = get().clients.find((item) => item.id === clientId);

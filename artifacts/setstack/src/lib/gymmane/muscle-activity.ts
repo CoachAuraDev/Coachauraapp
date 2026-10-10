@@ -68,10 +68,14 @@ export type MuscleActivityResult = {
   startDate: string;
   endDate: string;
   muscles: MuscleActivity[];
+  completedSessions: number;
+  workingSets: number;
+  unmappedExercises: string[];
 };
 
 type ExerciseMetadata = Pick<CatalogExercise, "id" | "name" | "primary"> & {
   secondary?: string[];
+  muscleMappingExplicit?: boolean;
 };
 
 type Workload = {
@@ -139,7 +143,7 @@ function resolveMuscleLabel(label: string, exerciseName: string, role: "primary"
   if (canonical) return canonical;
 
   const name = normalizeText(exerciseName);
-  if (/\b(adductor|adduction|hip adduction)\b/.test(name)) return "adductors";
+  if (role === "primary" && /\b(adductor|adduction|hip adduction)\b/.test(name)) return "adductors";
 
   if (key === "shoulder" || key === "shoulders" || key === "side deltoid") {
     if (/\b(rear|reverse|face pull|reverse fly|rear fly|posterior)\b/.test(name)) return "rear-deltoids";
@@ -187,7 +191,7 @@ export function mapExerciseMuscles(exercise: ExerciseMetadata): ExerciseMuscleMa
     const group = resolveMuscleLabel(label, exercise.name, "secondary");
     if (group && group !== primary) secondary.add(group);
   }
-  for (const group of supplementalSecondaryMuscles(exercise.name, primary)) {
+  for (const group of exercise.muscleMappingExplicit ? [] : supplementalSecondaryMuscles(exercise.name, primary)) {
     if (group !== primary) secondary.add(group);
   }
 
@@ -201,7 +205,7 @@ export function resolveLoggedExerciseMuscles(
   const saved = exerciseLibrary.find((item) => item.id === exercise.id);
   return mapExerciseMuscles(
     saved
-      ? { id: saved.id, name: saved.name, primary: saved.primary, secondary: saved.secondary ?? [] }
+      ? { id: saved.id, name: saved.name, primary: saved.primary, secondary: saved.secondary ?? [], muscleMappingExplicit: saved.muscleMappingExplicit }
       : { id: exercise.id, name: exercise.name, primary: exercise.primary, secondary: [] },
   );
 }
@@ -223,7 +227,9 @@ export function intensityForWeeklyEquivalent(value: number): MuscleIntensity {
 }
 
 function isIsoDate(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
 function calendarDaysBetween(from: string, to: string): number {
@@ -277,7 +283,7 @@ function addSetContribution(
 }
 
 function workingSet(set: SetLog): boolean {
-  return set.kind !== "warmup" && set.reps > 0;
+  return set.kind !== "warmup" && Number.isFinite(set.reps) && set.reps > 0;
 }
 
 function workloadForSession(session: SessionLog, exerciseLibrary: readonly CatalogExercise[]): SessionWork {
@@ -404,7 +410,19 @@ export function analyzeMuscleActivity(
     } satisfies MuscleActivity;
   });
 
-  return { period, startDate, endDate: today, muscles };
+  const selectedSessions = client.sessions.filter((session) =>
+    isIsoDate(session.date) && session.date >= startDate && session.date <= today,
+  );
+  const workingSessions = selectedSessions.filter((session) => session.exercises.some((exercise) => exercise.sets.some(workingSet)));
+  const workingSets = workingSessions.reduce((total, session) =>
+    total + session.exercises.reduce((sum, exercise) => sum + exercise.sets.filter(workingSet).length, 0), 0,
+  );
+  const unmappedExercises = [...new Set(workingSessions.flatMap((session) =>
+    session.exercises
+      .filter((exercise) => exercise.sets.some(workingSet) && !resolveLoggedExerciseMuscles(exercise, exerciseLibrary).primary)
+      .map((exercise) => exercise.name),
+  ))];
+  return { period, startDate, endDate: today, muscles, completedSessions: workingSessions.length, workingSets, unmappedExercises };
 }
 
 function addDays(date: string, offset: number): string {

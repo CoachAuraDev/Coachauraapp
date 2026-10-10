@@ -8,6 +8,7 @@ export type CatalogExercise = {
   equipment: string;
   difficulty: string;
   mode: string;
+  muscleMappingExplicit?: boolean;
 };
 export const kExercises: CatalogExercise[] = [
   {

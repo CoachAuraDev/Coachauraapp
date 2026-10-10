@@ -217,3 +217,57 @@ test("empty clients return all groups with no-data recovery", () => {
     muscle.recoveryStatus === "no-data",
   ));
 });
+
+test("explicit custom mappings are honoured without automatic press support", () => {
+  const custom: CatalogExercise = {
+    ...fixtureExercise,
+    id: "test-explicit-bench",
+    name: "TEST custom bench press",
+    primary: "chest",
+    secondary: ["calves", "chest", "calves"],
+    muscleMappingExplicit: true,
+  };
+  assert.deepEqual(mapExerciseMuscles(custom), { primary: "chest", secondary: ["calves"] });
+});
+
+test("client histories stay isolated and unfinished drafts are never counted", () => {
+  const first = client([session("test-client-a-session", today, [logExercise(bench, [set("a1", "normal", null), set("a2", "normal", null)])])]);
+  const second = { ...client([session("test-client-b-session", today, [logExercise(fixtureExercise, [set("b1", "normal", null)])])]), id: "test-client-b" };
+  const library = [...kExercises, fixtureExercise];
+  const a = analyzeMuscleActivity(first, library, 7, today);
+  const b = analyzeMuscleActivity(second, library, 7, today);
+  assert.equal(a.muscles.find((item) => item.id === "chest")!.directSets, 2);
+  assert.equal(b.muscles.find((item) => item.id === "chest")!.directSets, 0);
+  assert.equal(a.workingSets, 2);
+  assert.equal(b.workingSets, 1);
+  const unfinished = { ...client([]), draft: session("test-unfinished", today, [logExercise(bench, [set("draft1", "normal", 10)])]) };
+  assert.equal(analyzeMuscleActivity(unfinished, library, 7, today).workingSets, 0);
+});
+
+test("recovery labels use the latest day and current workload independent of display range", () => {
+  assert.equal(getMuscle([session("test-recent", today, [logExercise(bench, [set("r1", "normal", null)])])], 7, "chest").recoveryStatus, "recently-trained");
+  const recovering = [session("test-recovering", "2025-03-28", [logExercise(bench, Array.from({ length: 8 }, (_, i) => set(`recovering-${i}`, "normal", null)))])];
+  assert.equal(getMuscle(recovering, 7, "chest").recoveryStatus, "recovering");
+  assert.equal(getMuscle(recovering, 7, "chest").estimatedRecoveryHours, 72);
+  const old = [session("test-old-recovered", "2025-03-20", [logExercise(bench, [set("old", "normal", null)])])];
+  assert.equal(getMuscle(old, 7, "chest").recoveryStatus, "recovered");
+  assert.equal(getMuscle(old, 7, "chest").directSets, 0);
+  assert.equal(getMuscle(old, 30, "chest").recoveryStatus, "recovered");
+  assert.equal(getMuscle(old, 30, "chest").directSets, 1);
+  const sameDay = [
+    session("test-same-day-am", today, [logExercise(bench, [set("am1", "normal", null), set("am2", "normal", null)])]),
+    session("test-same-day-pm", today, [logExercise(bench, [set("pm1", "normal", null), set("pm2", "normal", null)])]),
+  ];
+  assert.equal(getMuscle(sameDay, 7, "chest").estimatedRecoveryHours, 56);
+});
+
+test("unmapped work is disclosed and invalid calendar dates do not enter recovery history", () => {
+  const unknown = { ...fixtureExercise, id: "test-unknown", name: "TEST Unmapped Exercise", primary: "other" };
+  const result = analyzeMuscleActivity(client([session("test-unmapped", today, [logExercise(unknown, [set("unknown1", "normal", null)])])]), [], 7, today);
+  assert.equal(result.workingSets, 1);
+  assert.deepEqual(result.unmappedExercises, ["TEST Unmapped Exercise"]);
+  assert.ok(result.muscles.every((muscle) => muscle.directSets + muscle.indirectSets === 0));
+  const invalid = client([session("test-invalid-date", "2025-02-31", [logExercise(bench, [set("invalid1", "normal", null)])])]);
+  assert.ok(analyzeMuscleActivity(invalid, kExercises, 30, today).muscles.every((muscle) => muscle.lastWorkoutDate === null));
+  assert.throws(() => analyzeMuscleActivity(client([]), kExercises, 7, "2025-02-31"), /Expected today/);
+});

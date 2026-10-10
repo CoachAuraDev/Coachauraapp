@@ -1,0 +1,1 @@
+- [SetStack commercial intent](setstack-business-intent.md) — trainer-facing Android APK intended for a 399 SEK one-off lifetime purchase.

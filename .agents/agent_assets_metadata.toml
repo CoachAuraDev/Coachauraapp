@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "Bz6IawYYn6CxJ7RN8zoLQ"
+uri = "file://artifacts/setstack/docs/android-testing.md"
+type = "text"
+title = "SetStack Android testing guide"
+description = "Phone-friendly debug APK build, download, install and signed release steps."
+logical_id = "e9ddd2d6-0f3c-4a42-b410-589d1a9b9542"
+content_hash = "sha256:c44b357a2faef9a32eac7eb98a51305dd1cd9445f2474bcb93996f726774742c"
+size = 7854
+mtime_ms = 1791663211338
+storage_uri = "gcs://replit-rams-assets-archer/rams/assets/repl:96c8d008-026a-47b8-a25d-7cca07dca672/e9ddd2d6-0f3c-4a42-b410-589d1a9b9542/da59b63e-51a0-4132-a7de-aaa2065cdc02"
+storage_version_token = "1791663253928293"
+content_type = "text/markdown"
