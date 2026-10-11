@@ -36,3 +36,15 @@ certificate; retaining the original baseline would check the wrong installation.
 **How to apply:** retain historical certificate evidence in the audit document,
 and change only the expected public identity. Do not rotate keys or imply that
 data from the removed installation survived.
+
+Treat a missing signing-key cache as a recovery blocker, not a transient build
+failure.
+
+**Why:** cloud compilation succeeded but the key cache was missing, and the
+resulting APK failed the installed-certificate check. Repeating builds cannot
+reconstruct the installed app's private key; persisting a new key only preserves
+the incompatible identity.
+
+**How to apply:** keep signing checks fail-closed. Recover a surviving matching
+key through secure storage, or obtain explicit approval for a backed-up identity
+migration. A cache alone is not durable signing-key storage.

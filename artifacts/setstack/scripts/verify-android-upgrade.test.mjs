@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { baseline, verifyUpgradeMetadata, verifyBuiltApk } from "./verify-android-upgrade.mjs";
 
 // TEST CLI fixtures, not claims of native/device test execution.
@@ -32,4 +33,15 @@ test("TEST guard blocks signature, package, version, origin and SDK incompatibil
 test("TEST guard explicitly fails without native tools or an APK", () => {
   assert.throws(() => verifyBuiltApk("/TEST-missing.apk", undefined), /SDK unavailable/);
   assert.throws(() => verifyBuiltApk("/TEST-missing.apk", "/TEST-sdk"), /does not exist/);
+});
+test("TEST workflow stops on a missing signing cache and retains verification before APK upload", () => {
+  const workflow = readFileSync(new URL("../../../.github/workflows/setstack-android-debug.yml", import.meta.url), "utf8");
+  assert.match(workflow, /path: ~\/\.android\/debug\.keystore\s*\n\s*key: [^\n]+\n\s*fail-on-cache-miss: true/);
+  const cache = workflow.indexOf("name: Reuse the test signing key");
+  const build = workflow.indexOf("name: Build debug APK");
+  const verify = workflow.indexOf("name: Verify signature and compatibility");
+  const upload = workflow.indexOf("name: Downloadable APK");
+  assert.ok(cache >= 0 && cache < build && build < verify && verify < upload);
+  assert.match(workflow, /working-directory: artifacts\/setstack\n\s*shell: bash\n\s*run: node scripts\/verify-android-upgrade\.mjs 2>&1 \| tee "\$RUNNER_TEMP\/setstack-upgrade-verification\.log"/);
+  assert.match(workflow, /\$\{\{ runner\.temp \}\}\/setstack-upgrade-verification\.log/);
 });

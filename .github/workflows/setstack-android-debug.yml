@@ -40,6 +40,7 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: setstack-debug-keystore-${{ github.repository_id }}-v1
+          fail-on-cache-miss: true
       - run: pnpm install --frozen-lockfile
       - name: Check calculation and data regressions
         run: |
@@ -57,7 +58,8 @@ jobs:
           test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Verify signature and compatibility with the installed test APK
         working-directory: artifacts/setstack
-        run: node scripts/verify-android-upgrade.mjs
+        shell: bash
+        run: node scripts/verify-android-upgrade.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-upgrade-verification.log"
       - name: Downloadable APK
         uses: actions/upload-artifact@v6
         with:
@@ -73,5 +75,6 @@ jobs:
           path: |
             ${{ runner.temp }}/setstack-android-sdk.log
             ${{ runner.temp }}/setstack-gradle.log
+            ${{ runner.temp }}/setstack-upgrade-verification.log
           if-no-files-found: warn
           retention-days: 7

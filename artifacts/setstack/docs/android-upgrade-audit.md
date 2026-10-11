@@ -52,6 +52,28 @@ restoration; do not uninstall again to work around an update failure.
 
 ## Prepared protections, not a verified device upgrade
 
+### Confirmed cloud compilation and signing blocker — 2026-10-11
+
+The supplied current-run logs show 67 application, four SDK-setup and four
+upgrade-metadata tests passing. The web build and Capacitor sync succeeded.
+Gradle reported `BUILD SUCCESSFUL in 2m 41s`; the subsequent nonempty-APK check
+passed. An APK existed on that cloud runner, but it was not uploaded.
+
+The signing-key restore reported **Cache not found**. The produced APK then
+failed the installed-certificate comparison. This is not a compilation error:
+no matching installed-app private key was restored, and upload was intentionally
+blocked. The cloud APK is not present in this workspace.
+
+The workflow now stops at a cache miss, before Gradle can silently produce a
+different debug signer. Verification logs are retained in the failure artifact,
+with Bash pipefail preserving the verification command's failure status.
+
+This safety fix does not recover the missing key. Repeating builds, changing the
+expected fingerprint, or saving a freshly generated key would not make it
+compatible with the current installation. A matching key must be recovered from
+a surviving secure copy/cache, or the owner must approve a backed-up migration
+to a new signing identity. Do not send a private keystore or password in chat.
+
 The source now uses version code `2` and version name `1.0.1`, retaining the same
 package and storage origin. The GitHub debug build now verifies the produced
 APK with Android's `apksigner`, then checks its certificate against the confirmed
