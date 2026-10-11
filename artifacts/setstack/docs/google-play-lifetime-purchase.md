@@ -35,7 +35,13 @@ are configured in Play Console.
 
 ## Building
 
-From the repository root:
+The GitHub Actions **Build CoachAura debug APK** workflow always builds a
+debug/testing APK using Gradle's standard debug signing. It does not require a
+keystore cache or release credentials. Its signing certificate can differ from a
+previous runner/device install; Android then requires an explicit backup and
+reinstall rather than an in-place update. The workflow checks that the artifact
+is validly signed and that the app ID, version, SDK and Capacitor origin are
+correct, but it does not claim an in-place update was verified.
 
 ```sh
 pnpm --filter @workspace/setstack run android:sync
@@ -45,11 +51,29 @@ cd artifacts/setstack
 
 The debug APK is written to
 `artifacts/setstack/android/app/build/outputs/apk/debug/app-debug.apk`.
-For a Play upload, build an App Bundle with
-`./android/gradlew -p android :app:bundleRelease`; the release build must be
-signed with the app's legitimate release signing configuration. Do not commit a
-private signing key. The existing debug signing configuration is not a
-production Play signing setup.
+
+To also create a **signed Play upload AAB**, run the workflow with its
+`build_release` checkbox enabled and configure all of these GitHub repository
+secrets:
+
+- `COACHAURA_UPLOAD_KEYSTORE_BASE64` — base64-encoded JKS upload keystore.
+- `COACHAURA_UPLOAD_STORE_PASSWORD` — keystore password.
+- `COACHAURA_UPLOAD_KEY_ALIAS` — upload-key alias.
+- `COACHAURA_UPLOAD_KEY_PASSWORD` — upload-key password.
+
+Use the existing Play Console upload key for this app. Do not generate a
+replacement key or commit it to the repository. The workflow writes the decoded
+keystore only to the hosted runner's temporary directory, verifies the AAB
+signature, and removes that temporary file. If secrets are absent and the release
+option is not selected, the debug APK build still succeeds. If release is
+requested without all four secrets, the debug APK is uploaded and the job then
+fails with the missing secret names.
+
+The AAB is an upload-signed artifact, not a Play release or a claim that Play
+will accept the version. The current Gradle version is `versionCode 2` /
+`versionName 1.0.1`; increment the version code for each new Play upload and
+confirm it exceeds the highest code already used in Play Console. Gradle rejects
+release tasks when signing credentials are missing.
 
 ## Entitlement and security limits
 

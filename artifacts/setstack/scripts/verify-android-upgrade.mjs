@@ -49,10 +49,14 @@ export function verifyBuiltApk(apk, sdk) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
     const apk = resolve(process.argv[2] ?? "android/app/build/outputs/apk/debug/app-debug.apk");
-  console.log("APK signature, metadata and Capacitor checks passed:", verifyBuiltApk(apk, process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT));
-  console.log("This does not verify an update to an existing installation, on-device launch or real client data.");
+    const result = verifyBuiltApk(apk, process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT);
+    console.log("Debug APK signature, package, version and Capacitor checks passed:", result);
+    if (result.certificateSha256 !== baseline.certificateSha256) {
+      console.warn("The signer differs from the recorded historical installation. Android will not install this APK over that installation; export its data before replacing it.");
+    }
+    console.log("This validates the artifact only; it does not prove an in-place update, on-device launch or real client data.");
   } catch (error) {
-    console.error(`UPGRADE NOT VERIFIED: ${error.message}`);
+    console.error(`APK BUILD VALIDATION FAILED: ${error.message}`);
     process.exitCode = 1;
   }
 }

@@ -42,6 +42,7 @@ test("TEST APK workflow needs no saved signing key and retains verification befo
   const verify = workflow.indexOf("name: Verify signed APK metadata and CoachAura configuration");
   const upload = workflow.indexOf("name: Downloadable APK");
   assert.ok(build >= 0 && build < verify && verify < upload);
+  assert.doesNotMatch(workflow.slice(0, upload), /COACHAURA_UPLOAD_(?:KEYSTORE|STORE|KEY_ALIAS|KEY_PASSWORD)/);
   assert.match(workflow, /working-directory: artifacts\/setstack\n\s*shell: bash\n\s*run: node scripts\/verify-android-upgrade\.mjs 2>&1 \| tee "\$RUNNER_TEMP\/setstack-apk-verification\.log"/);
   assert.match(workflow, /\$\{\{ runner\.temp \}\}\/setstack-apk-verification\.log/);
   assert.match(workflow, /name: CoachAura-debug-APK-\$\{\{ github\.run_number \}\}-\$\{\{ github\.run_attempt \}\}/);
@@ -52,5 +53,28 @@ test("TEST APK workflow needs no saved signing key and retains verification befo
   assert.match(gradle, /applicationId "app\.setstack\.trainer"/);
   assert.match(gradle, /versionCode 2/);
   assert.match(gradle, /versionName "1\.0\.1"/);
-  assert.doesNotMatch(gradle, /signingConfig|storeFile|storePassword/);
+  assert.match(workflow, /build_release:[\s\S]*?default: false/);
+  assert.match(workflow, /COACHAURA_UPLOAD_KEYSTORE_BASE64/);
+  assert.match(workflow, /COACHAURA_UPLOAD_STORE_PASSWORD/);
+  assert.match(workflow, /COACHAURA_UPLOAD_KEY_ALIAS/);
+  assert.match(workflow, /COACHAURA_UPLOAD_KEY_PASSWORD/);
+  const apkUpload = workflow.indexOf("name: Downloadable APK");
+  const secretCheck = workflow.indexOf("name: Prepare optional Play upload signing");
+  const missingSecretError = workflow.indexOf("name: Report missing release credentials");
+  const bundle = workflow.indexOf("name: Build signed Play upload App Bundle");
+  const bundleVerify = workflow.indexOf("name: Verify App Bundle signature");
+  const bundleUpload = workflow.indexOf("name: Downloadable Play upload App Bundle");
+  assert.ok(apkUpload >= 0 && apkUpload < secretCheck && secretCheck < missingSecretError &&
+    missingSecretError < bundle && bundle < bundleVerify && bundleVerify < bundleUpload);
+  assert.match(workflow, /jarsigner -verify/);
+  assert.match(workflow, /name: CoachAura-upload-AAB-/);
+  assert.match(workflow, /Remove temporary upload key/);
+
+  assert.match(gradle, /COACHAURA_RELEASE_KEYSTORE_PATH/);
+  assert.match(gradle, /COACHAURA_RELEASE_STORE_PASSWORD/);
+  assert.match(gradle, /COACHAURA_RELEASE_KEY_ALIAS/);
+  assert.match(gradle, /COACHAURA_RELEASE_KEY_PASSWORD/);
+  assert.match(gradle, /if \(hasReleaseSigning\)[\s\S]*?signingConfig signingConfigs\.release/);
+  assert.match(gradle, /Release signing is not configured/);
+  assert.doesNotMatch(gradle, /storePassword\s*=\s*["'][^"']+["']/);
 });

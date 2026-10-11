@@ -1,8 +1,26 @@
 apply plugin: 'com.android.application'
 
+def releaseSigning = [
+    keystorePath: System.getenv("COACHAURA_RELEASE_KEYSTORE_PATH"),
+    storePassword: System.getenv("COACHAURA_RELEASE_STORE_PASSWORD"),
+    keyAlias: System.getenv("COACHAURA_RELEASE_KEY_ALIAS"),
+    keyPassword: System.getenv("COACHAURA_RELEASE_KEY_PASSWORD")
+]
+def hasReleaseSigning = releaseSigning.values().every { value -> value != null && !value.isBlank() }
+
 android {
     namespace = "app.setstack.trainer"
     compileSdk = rootProject.ext.compileSdkVersion
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseSigning.keystorePath)
+                storePassword releaseSigning.storePassword
+                keyAlias releaseSigning.keyAlias
+                keyPassword releaseSigning.keyPassword
+            }
+        }
+    }
     defaultConfig {
         applicationId "app.setstack.trainer"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -20,7 +38,23 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
+    }
+}
+
+gradle.taskGraph.whenReady { taskGraph ->
+    def releaseRequested = taskGraph.allTasks.any { task ->
+        task.path == ":app:bundleRelease" || task.path == ":app:assembleRelease"
+    }
+    if (releaseRequested && !hasReleaseSigning) {
+        throw new GradleException(
+            "Release signing is not configured. Provide COACHAURA_RELEASE_KEYSTORE_PATH, " +
+            "COACHAURA_RELEASE_STORE_PASSWORD, COACHAURA_RELEASE_KEY_ALIAS and " +
+            "COACHAURA_RELEASE_KEY_PASSWORD. Debug builds do not require these values."
+        )
     }
 }
 

@@ -2,6 +2,12 @@ name: Build CoachAura debug APK
 
 on:
   workflow_dispatch:
+    inputs:
+      build_release:
+        description: "Also build a signed Google Play upload AAB (requires repository secrets)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,6 +26,7 @@ jobs:
             echo '## CoachAura Android build source'
             printf 'Source commit: %s\n\nBranch: %s\n\nRun attempt: %s\n\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ATTEMPT"
             echo 'For the latest app, start Run workflow on main. Re-running an older job rebuilds its original commit.'
+            echo 'The APK artifact is a debug/testing build, not a production release.'
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: pnpm/action-setup@v5
         with:
@@ -61,6 +68,90 @@ jobs:
           path: artifacts/setstack/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Prepare optional Play upload signing
+        id: release-signing
+        if: ${{ inputs.build_release }}
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.COACHAURA_UPLOAD_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.COACHAURA_UPLOAD_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.COACHAURA_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.COACHAURA_UPLOAD_KEY_PASSWORD }}
+        run: |
+          missing=()
+          [[ -n "$KEYSTORE_BASE64" ]] || missing+=(COACHAURA_UPLOAD_KEYSTORE_BASE64)
+          [[ -n "$STORE_PASSWORD" ]] || missing+=(COACHAURA_UPLOAD_STORE_PASSWORD)
+          [[ -n "$KEY_ALIAS" ]] || missing+=(COACHAURA_UPLOAD_KEY_ALIAS)
+          [[ -n "$KEY_PASSWORD" ]] || missing+=(COACHAURA_UPLOAD_KEY_PASSWORD)
+          if (( ${#missing[@]} )); then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            printf '::warning::Signed AAB not built; missing GitHub Secrets: %s\n' "${missing[*]}"
+            {
+              echo '### Signed AAB skipped'
+              printf 'Configure these repository secrets to enable it: `%s`.\n' "${missing[*]}"
+              echo 'The debug APK artifact above remains available for testing.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          key_path="$RUNNER_TEMP/coachaura-upload-key.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          test -s "$key_path"
+          chmod 600 "$key_path"
+          printf 'COACHAURA_RELEASE_KEYSTORE_PATH=%s\n' "$key_path" >> "$GITHUB_ENV"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Report missing release credentials
+        if: ${{ inputs.build_release && steps.release-signing.outputs.ready != 'true' }}
+        shell: bash
+        run: |
+          echo "::error::The debug APK was built, but the requested signed AAB needs all four COACHAURA_UPLOAD_* GitHub Secrets."
+          exit 1
+
+      - name: Build signed Play upload App Bundle
+        if: ${{ inputs.build_release && steps.release-signing.outputs.ready == 'true' }}
+        working-directory: artifacts/setstack/android
+        shell: bash
+        env:
+          COACHAURA_RELEASE_STORE_PASSWORD: ${{ secrets.COACHAURA_UPLOAD_STORE_PASSWORD }}
+          COACHAURA_RELEASE_KEY_ALIAS: ${{ secrets.COACHAURA_UPLOAD_KEY_ALIAS }}
+          COACHAURA_RELEASE_KEY_PASSWORD: ${{ secrets.COACHAURA_UPLOAD_KEY_PASSWORD }}
+        run: |
+          ./gradlew bundleRelease --no-daemon --stacktrace --console=plain 2>&1 | tee "$RUNNER_TEMP/setstack-release-bundle.log"
+          test -s app/build/outputs/bundle/release/app-release.aab
+
+      - name: Verify App Bundle signature
+        if: ${{ inputs.build_release && steps.release-signing.outputs.ready == 'true' }}
+        shell: bash
+        run: |
+          validation_log="$RUNNER_TEMP/setstack-release-validation.log"
+          jarsigner -verify -verbose -certs "$GITHUB_WORKSPACE/artifacts/setstack/android/app/build/outputs/bundle/release/app-release.aab" > "$validation_log" 2>&1
+          grep -Fq 'jar verified.' "$validation_log" || {
+            cat "$validation_log"
+            echo "::error::The AAB did not contain a verified signing signature."
+            exit 1
+          }
+          echo "Signed App Bundle signature verified."
+          {
+            echo '### Signed Android App Bundle'
+            echo 'A signed upload bundle was created. Confirm its version code is newer than the highest version already used in Play Console before upload.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Downloadable Play upload App Bundle
+        if: ${{ inputs.build_release && steps.release-signing.outputs.ready == 'true' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: CoachAura-upload-AAB-${{ github.run_number }}-${{ github.run_attempt }}
+          path: artifacts/setstack/android/app/build/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove temporary upload key
+        if: ${{ always() }}
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/coachaura-upload-key.jks"
+
       - name: Downloadable failure logs
         if: failure()
         uses: actions/upload-artifact@v6
@@ -70,5 +161,7 @@ jobs:
             ${{ runner.temp }}/setstack-android-sdk.log
             ${{ runner.temp }}/setstack-gradle.log
             ${{ runner.temp }}/setstack-apk-verification.log
+            ${{ runner.temp }}/setstack-release-bundle.log
+            ${{ runner.temp }}/setstack-release-validation.log
           if-no-files-found: warn
           retention-days: 7

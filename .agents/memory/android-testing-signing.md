@@ -3,48 +3,18 @@ name: Android testing signing
 description: The owner's installed APK is a GitHub Actions debug build, not a release installation.
 ---
 
-The owner confirmed their installed Android app is a GitHub Actions debug APK.
-Do not assume a commercial release key can update it in place.
+CI debug APKs may use the hosted runner's standard debug signing and must not
+depend on a cached debug keystore. Their certificate can differ between runs;
+validate that each artifact is actually signed and report that a different
+certificate prevents in-place installation over an older APK.
 
-**Why:** preserving the package and storage identifiers is insufficient if the
-signing identity differs. The APK's public certificate cannot recover the
-private key, and recreating a debug keystore gives a different identity.
+**Why:** an Actions run built the APK successfully, but the cached debug key was
+missing and a post-build guard failed only because the fresh debug certificate
+did not match a historical phone installation. Requiring that old certificate
+made debug artifact generation depend on unrecoverable cache state.
 
-**How to apply:** verify a testing update against the installed certificate and
-existing cloud-cache key before offering it. Preserve the current installation
-and backups when planning production signing; never recommend uninstalling as
-an update-error workaround. Do not use the cached debug key commercially.
-
-Caching a debug key after earlier builds does not restore their signing identity.
-
-**Why:** comparison of two owner-supplied APKs found identical bundled web files
-but different signing certificates. A new build can still contain old code and
-simultaneously be incompatible with the original installation.
-
-**How to apply:** inspect actual APK contents and the workflow's checked-out
-revision, not download names or successful job status. Do not replace the
-installed-certificate baseline with a newer artifact's certificate just to make
-the guard pass. Confirm which installation remains on the phone before planning
-an update or an explicitly approved backup-based migration.
-
-Only update the certificate baseline after the owner confirms a replacement
-installation and the supplied APK's certificate has been inspected.
-
-**Why:** the owner confirmed reinstalling a later debug APK with a different
-certificate; retaining the original baseline would check the wrong installation.
-
-**How to apply:** retain historical certificate evidence in the audit document,
-and change only the expected public identity. Do not rotate keys or imply that
-data from the removed installation survived.
-
-Treat a missing signing-key cache as a recovery blocker, not a transient build
-failure.
-
-**Why:** cloud compilation succeeded but the key cache was missing, and the
-resulting APK failed the installed-certificate check. Repeating builds cannot
-reconstruct the installed app's private key; persisting a new key only preserves
-the incompatible identity.
-
-**How to apply:** keep signing checks fail-closed. Recover a surviving matching
-key through secure storage, or obtain explicit approval for a backed-up identity
-migration. A cache alone is not durable signing-key storage.
+**How to apply:** keep debug signing separate from Play upload signing. Do not
+reject a well-formed debug APK solely because its signer differs from a device
+baseline; do warn that Android may require a backup and reinstall. A release
+App Bundle must use the app's existing Play upload key supplied securely through
+GitHub Secrets. Never generate or commit a replacement release key.
