@@ -13,14 +13,23 @@ type Fields = { kg?: number | null; weight: string; reps: string; rir: string; k
 const dispWeight = (kg: number | null, unit: "kg" | "lb") => (kg == null ? "" : String(Number(toDisplay(kg, unit).toFixed(2))));
 const entryToFields = (e: DraftEntry, unit: "kg" | "lb"): Fields => ({
   kg: e.weightKg,
-  weight: dispWeight(e.weightKg, unit), reps: e.reps == null ? "" : String(e.reps), rir: e.rir == null ? "" : String(e.rir), kind: e.kind,
+  weight: e.inputs?.unit === unit ? e.inputs.weight : dispWeight(e.weightKg, unit),
+  reps: e.inputs?.reps ?? (e.reps == null ? "" : String(e.reps)),
+  rir: e.inputs?.rir ?? (e.rir == null ? "" : String(e.rir)), kind: e.kind,
 });
-const fieldsToEntry = (f: Fields, unit: "kg" | "lb"): DraftEntry => ({
-  weightKg: f.kg !== undefined ? f.kg : f.weight === "" || isNaN(Number(f.weight)) ? null : fromDisplay(Number(f.weight), unit),
-  reps: f.reps === "" || isNaN(Number(f.reps)) ? null : Number(f.reps),
-  rir: f.rir === "" || isNaN(Number(f.rir)) ? null : Number(f.rir),
-  kind: f.kind,
-});
+const pendingNumber = (value: string) => value.trim() === "" || !Number.isFinite(Number(value)) ? null : Number(value);
+const fieldsToEntry = (f: Fields, unit: "kg" | "lb"): DraftEntry => {
+  const kg = f.kg !== undefined ? f.kg : pendingNumber(f.weight) == null ? null : fromDisplay(Number(f.weight), unit);
+  const reps = pendingNumber(f.reps), rir = pendingNumber(f.rir);
+  return {
+    weightKg: kg != null && Number.isFinite(kg) && kg >= 0 ? kg : null,
+    reps: reps != null && Number.isInteger(reps) && reps >= 0 && reps <= 100 ? reps : null,
+    rir: rir != null && rir >= 0 && rir <= 10 ? rir : null,
+    kind: f.kind,
+    // Invalid or incomplete input is retained as text, never as training data.
+    inputs: { weight: f.weight, reps: f.reps, rir: f.rir, unit },
+  };
+};
 
 function SetRow({ set, index, exerciseIndex, unit }: { set: SetLog; index: number; exerciseIndex: number; unit: "kg" | "lb" }) {
   const removeSet = useFloor((s) => s.removeSet);

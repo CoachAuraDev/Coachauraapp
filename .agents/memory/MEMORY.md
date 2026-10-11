@@ -4,3 +4,5 @@
 - [Fast logging safety](workout-logging-safety.md) — protect pending inputs and exact loads; independent template assignments; foreground-only rest alerts.
 - [Browser persistence fixtures](browser-persistence-fixtures.md) — seed test storage once; unconditional init scripts reset records on reload.
 - [Client muscle dashboard choice](gymmane-analytics-fidelity.md) — CoachAura dashboard replaces the GymMane profile graph; retain GPL attribution and stored workout data.
+- [Persistence failure contract](persistence-failure-contract.md) — publish only durable changes; preserve unreadable data and unfinished input for explicit recovery.
+- [Development error overlay](dev-error-overlay-transport.md) — custom error names are dropped in transport; name-based filtering did not unblock recovery controls.

@@ -32,7 +32,9 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
+    // Storage failures already have a blocking, actionable recovery screen.
+    // Keep the development overlay for unexpected errors only.
+    runtimeErrorOverlay({ filter: (error) => error.name !== "PersistenceFailure" }),
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [

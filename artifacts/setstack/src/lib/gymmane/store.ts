@@ -1,5 +1,7 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { createJSONStorage } from "zustand/middleware";
+import { durablePersist, withRecoveryWrite } from "./durable-persistence.ts";
+import { encodeBackup, inspectBackup, validateSavedFloor, type BackupResult } from "./backup.ts";
 import { installProgram } from "./apply.ts";
 import { kExercises, type CatalogExercise } from "./catalog.ts";
 import { guessMuscle } from "./match.ts";
@@ -9,8 +11,6 @@ import { kProgramTemplates } from "./programs.ts";
 import { seedClients } from "./seed.ts";
 import { uid, type SetKind, type Unit } from "./engine.ts";
 import { MUSCLE_GROUPS, type MuscleGroup } from "./muscle-activity.ts";
-
-type Backup = { app: "SetStack"; version: 1; clients: Client[]; custom: CatalogExercise[]; templates?: Routine[] };
 
 type FloorState = {
   clients: Client[];
@@ -55,6 +55,7 @@ type FloorState = {
   deleteSession: (clientId: string, sessionId: string) => void;
   updateSession: (clientId: string, session: SessionLog) => boolean;
   exportBackup: () => string;
+  previewBackup: (raw: string) => BackupResult;
   importBackup: (raw: string) => string;
   resetDemo: () => void;
 };
@@ -77,14 +78,11 @@ function patchClient(clients: Client[], id: string, update: (client: Client) => 
   return clients.map((client) => (client.id === id ? update(client) : client));
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 export const useFloor = create<FloorState>()(
-  persist(
+  durablePersist(
     (set, get) => ({
-      clients: seedClients(),
+      // Demo data remains opt-in in Settings. Never substitute it for a failed read.
+      clients: typeof window === "undefined" ? seedClients() : [],
       unit: "kg",
       draft: null,
       custom: [],
@@ -403,24 +401,38 @@ export const useFloor = create<FloorState>()(
         return true;
       },
       exportBackup: () => {
-        const payload: Backup = { app: "SetStack", version: 1, clients: get().clients, custom: get().custom, templates: get().templates };
-        return JSON.stringify(payload, null, 2);
+        const { clients, custom, templates, draft, unit } = get();
+        return encodeBackup({ clients, custom, templates, draft, unit });
       },
+      previewBackup: (raw) => inspectBackup(raw, get()),
       importBackup: (raw) => {
-        let parsed: unknown;
+        // Revalidate at confirmation time; a preview alone is not permission to
+        // trust mutable data or a different current workspace.
+        const result = inspectBackup(raw, get());
+        if (!result.ok) return result.error;
         try {
-          parsed = JSON.parse(raw);
-        } catch {
-          return "That file is not JSON.";
+          const options = useFloor.persist.getOptions();
+          const name = options.name ?? "setstack-v1";
+          const key = `${name}.before-restore`;
+          if (typeof window !== "undefined") {
+            // Preserve exact original bytes, even when hydration found bad JSON.
+            const original = window.localStorage.getItem(name);
+            if (original !== null) window.localStorage.setItem(key, original);
+          } else {
+            const original = options.storage?.getItem(name);
+            if (original && typeof (original as Promise<unknown>).then === "function") {
+              return "Restore requires synchronous local storage.";
+            }
+            if (original) options.storage?.setItem(key, original as never);
+          }
+          withRecoveryWrite(() => set({
+            ...result.preview.data,
+            notice: `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"}.`,
+          }));
+          return "";
+        } catch (error) {
+          return `Restore was not applied. ${error instanceof Error ? error.message : "Storage failed."}`;
         }
-        const body = isRecord(parsed) && Array.isArray(parsed.clients) ? parsed.clients : Array.isArray(parsed) ? parsed : null;
-        if (!body) return "No clients were found in that file.";
-        const clients = body.filter(isClient);
-        if (clients.length === 0) return "No valid client profiles were found.";
-        const custom = isRecord(parsed) && Array.isArray(parsed.custom) ? parsed.custom.filter(isExercise) : get().custom;
-        const templates = isRecord(parsed) && Array.isArray(parsed.templates) ? parsed.templates.filter(isRoutine) : get().templates;
-        set({ clients, custom, templates, draft: null, notice: `Restored ${clients.length} client${clients.length === 1 ? "" : "s"}.` });
-        return "";
       },
       resetDemo: () => set({ clients: seedClients(), custom: [], templates: [], draft: null, notice: "Demo floor reloaded." }),
     }),
@@ -435,32 +447,10 @@ export const useFloor = create<FloorState>()(
         custom: state.custom,
         templates: state.templates,
       }),
+      merge: (persisted, current) => ({ ...current, ...validateSavedFloor(persisted) }),
     },
   ),
 );
-
-function isRoutine(value: unknown): value is Routine {
-  return isRecord(value) && typeof value.id === "string" && typeof value.name === "string" &&
-    typeof value.group === "string" && Array.isArray(value.exerciseIds) &&
-    value.exerciseIds.every((id) => typeof id === "string") &&
-    isRecord(value.sets) && isRecord(value.plan) && isRecord(value.rest);
-}
-
-function isExercise(value: unknown): value is CatalogExercise {
-  if (!isRecord(value)) return false;
-  return typeof value.id === "string" && typeof value.name === "string" && typeof value.primary === "string";
-}
-
-function isClient(value: unknown): value is Client {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    Array.isArray(value.sessions) &&
-    Array.isArray(value.routines) &&
-    typeof value.sex === "string"
-  );
-}
 
 export function exercisePool(): CatalogExercise[] {
   return [...kExercises, ...useFloor.getState().custom];

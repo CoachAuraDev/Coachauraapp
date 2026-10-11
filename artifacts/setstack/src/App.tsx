@@ -15,6 +15,9 @@ import { MuscleActivityDashboard } from "@/components/muscle-activity-dashboard"
 import { CustomExerciseMuscles } from "@/components/custom-exercise-muscles";
 import { Modal, fieldClass, btn, primaryBtn, quietBtn, labelClass } from "@/components/workout/shared";
 import { WorkoutDrawer } from "@/components/workout/workout-logger";
+import { BackupRestoreDialog, exportOriginalStorage } from "@/components/backup-restore";
+import { PersistenceStatus, usePersistenceHealth } from "@/components/persistence-status";
+import { MAX_BACKUP_BYTES } from "@/lib/gymmane/backup";
 import { TemplateAssign } from "@/components/workout/template-assign";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { isAndroidApp } from "@/lib/native/android";
@@ -192,7 +195,6 @@ function SettingsPage() {
   const unit=useFloor(s=>s.unit);
   const setUnit=useFloor(s=>s.setUnit);
   const exportBackup=useFloor(s=>s.exportBackup);
-  const importBackup=useFloor(s=>s.importBackup);
   const resetDemo=useFloor(s=>s.resetDemo);
   const [status,setStatus]=useState("");
   const [exporting,setExporting]=useState(false);
@@ -210,8 +212,7 @@ function SettingsPage() {
     } catch(error) {setStatus(`Could not export the backup: ${error instanceof Error?error.message:String(error)}`);}
     finally {setExporting(false);}
   };
-  const readFile=(file?:File)=>{if(!file)return;const reader=new FileReader();reader.onload=()=>{setRestoreText(String(reader.result??""));setConfirmRestore(true)};reader.onerror=()=>setStatus("Could not read that file. Try another JSON backup.");reader.readAsText(file);};
-  const restore=()=>{const error=importBackup(restoreText);if(error)setStatus(error);else setStatus("Backup restored on this device.");setConfirmRestore(false);setRestoreText("");};
+  const readFile=(file?:File)=>{if(!file)return;if(file.size>MAX_BACKUP_BYTES){setStatus("Backup exceeds the 20 MB safety limit.");return;}const reader=new FileReader();reader.onload=()=>{const raw=String(reader.result??"");const result=useFloor.getState().previewBackup(raw);if(!result.ok){setStatus(result.error);return;}setRestoreText(raw);setConfirmRestore(true)};reader.onerror=()=>setStatus("Could not read that file. Try another JSON backup.");reader.readAsText(file);};
   const reset=()=>ask({title:"Reset demo data?",message:"Reset all local data to the original demo floor? This replaces your current athletes and sessions.",confirmLabel:"Reset data",onConfirm:()=>{resetDemo();setStatus("Demo data restored.");}});
   return <>{confirmNode}<Header eyebrow="Workspace preferences" title="Keep your data close." subtitle="Set your working units and make a portable copy of the training floor."/>
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
@@ -226,7 +227,8 @@ function SettingsPage() {
         <div className="px-1 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">Training engine derived from GymMane by InlitX and contributors. Licensed under GNU GPL-3.0. See included LICENSE and third_party/gymmane/NOTICE.</div>
       </div>
     </div>
-    {confirmRestore&&<Modal title="Replace this browser's data?" onClose={()=>{setConfirmRestore(false);setRestoreText("")}}><div className="rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-4 text-sm leading-relaxed text-[hsl(38_95%_80%)]"><strong>Restore replaces your current athlete list and sessions.</strong><br/>This cannot be undone unless you exported a backup first. Confirm only if this is the file you want.</div><div className="mt-5 flex justify-end gap-2"><button className={quietBtn} onClick={()=>{setConfirmRestore(false);setRestoreText("")}}>Cancel</button><button className={`${btn} bg-[hsl(var(--destructive))] text-[hsl(var(--destructive-foreground))]`} onClick={restore} data-testid="button-confirm-restore"><FileUp size={15}/>Replace & restore</button></div></Modal>}
+    <button className={`${quietBtn} mt-4`} onClick={()=>{void exportOriginalStorage(true).then(setStatus).catch(error=>setStatus(error instanceof Error?error.message:"Could not export recovery copy."));}} data-testid="button-export-before-restore">Download pre-restore copy</button>
+    {confirmRestore&&<BackupRestoreDialog raw={restoreText} onClose={()=>{setConfirmRestore(false);setRestoreText("")}} onRestored={()=>{setStatus("Backup restored and saved on this device. A pre-restore recovery copy is available.");setConfirmRestore(false);setRestoreText("")}}/>}
   </>;
 }
 
@@ -235,10 +237,11 @@ function NotFoundPage() {
 }
 
 function App() {
-  const [hydrated,setHydrated]=useState(false);
-  useEffect(()=>{let mounted=true;Promise.resolve(useFloor.persist.rehydrate()).finally(()=>{if(mounted)setHydrated(true)});return()=>{mounted=false}},[]);
-  if(!hydrated) return <div className="flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-6"><div className="w-full max-w-sm"><div className="mb-5 h-8 w-36 animate-pulse rounded-lg bg-[hsl(var(--muted))]"/><div className="h-36 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/><div className="mt-4 h-20 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/></div></div>;
-  return <AppShell><Switch><Route path="/" component={Dashboard}/><Route path="/clients/:id" component={ClientPage}/><Route path="/settings" component={SettingsPage}/><Route component={NotFoundPage}/></Switch></AppShell>;
+  const health=usePersistenceHealth();
+  useEffect(()=>{void Promise.resolve(useFloor.persist.rehydrate()).catch(()=>{});},[]);
+  if(health.phase==="read-error")return <PersistenceStatus/>;
+  if(health.phase==="loading") return <div className="flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-6"><div className="w-full max-w-sm"><div className="mb-5 h-8 w-36 animate-pulse rounded-lg bg-[hsl(var(--muted))]"/><div className="h-36 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/><div className="mt-4 h-20 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/></div></div>;
+  return <><AppShell><Switch><Route path="/" component={Dashboard}/><Route path="/clients/:id" component={ClientPage}/><Route path="/settings" component={SettingsPage}/><Route component={NotFoundPage}/></Switch></AppShell><PersistenceStatus/></>;
 }
 
 export default App;

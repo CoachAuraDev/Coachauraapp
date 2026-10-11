@@ -39,7 +39,7 @@ test("CoachAura rename preserves legacy persisted clients, programs, workouts, p
     // This marker is an internal format identifier, not UI branding.
     const backup = JSON.parse(restored.exportBackup());
     assert.equal(backup.app, "SetStack");
-    assert.equal(backup.version, 1);
+    assert.equal(backup.version, 2);
     assert.deepEqual(backup.clients, historical.clients);
     assert.deepEqual(backup.custom, historical.custom);
     assert.equal(restored.importBackup(JSON.stringify(backup)), "");

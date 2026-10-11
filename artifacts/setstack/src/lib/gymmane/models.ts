@@ -83,4 +83,6 @@ export type DraftEntry = {
   reps: number | null;
   rir: number | null;
   kind: "normal" | "warmup";
+  // Editable input is not a logged set: retain exact text and its display unit.
+  inputs?: { weight: string; reps: string; rir: string; unit: "kg" | "lb" };
 };
