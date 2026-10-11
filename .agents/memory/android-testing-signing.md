@@ -14,3 +14,15 @@ private key, and recreating a debug keystore gives a different identity.
 existing cloud-cache key before offering it. Preserve the current installation
 and backups when planning production signing; never recommend uninstalling as
 an update-error workaround. Do not use the cached debug key commercially.
+
+Caching a debug key after earlier builds does not restore their signing identity.
+
+**Why:** comparison of two owner-supplied APKs found identical bundled web files
+but different signing certificates. A new build can still contain old code and
+simultaneously be incompatible with the original installation.
+
+**How to apply:** inspect actual APK contents and the workflow's checked-out
+revision, not download names or successful job status. Do not replace the
+installed-certificate baseline with a newer artifact's certificate just to make
+the guard pass. Confirm which installation remains on the phone before planning
+an update or an explicitly approved backup-based migration.
