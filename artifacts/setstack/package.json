@@ -17,7 +17,7 @@
     "android:open": "pnpm run android:sync && cap open android",
     "android:debug": "pnpm run android:sync && node scripts/android-debug.mjs",
     "android:run": "pnpm run android:sync && cap run android",
-    "test:unit": "node --experimental-strip-types --test src/lib/gymmane/*.test.ts src/lib/native/*.test.ts"
+    "test:unit": "node --experimental-strip-types --test src/lib/gymmane/*.test.ts src/lib/native/*.test.ts src/lib/billing/*.test.ts"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3",

@@ -22,6 +22,9 @@ import { TemplateAssign } from "@/components/workout/template-assign";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { isAndroidApp } from "@/lib/native/android";
 import { exportBackupFile } from "@/lib/native/backup";
+import { billingController, initializePlayBilling } from "@/lib/billing/controller";
+import { FREE_CLIENT_LIMIT } from "@/lib/billing/entitlement";
+import { LifetimePaywall, useBillingSnapshot } from "@/components/lifetime-paywall";
 
 const RoutineModal = lazy(() => import("@/components/workout/routine-editor").then((module) => ({ default: module.RoutineModal })));
 const SessionEditor = lazy(() => import("@/components/workout/session-editor").then((module) => ({ default: module.SessionEditor })));
@@ -91,10 +94,15 @@ function Header({ eyebrow, title, subtitle, action }: { eyebrow: string; title: 
 
 function Dashboard() {
   const [modal, setModal] = useState(false);
-  return <><TrainerDashboard onAddClient={() => setModal(true)}/>{modal && <ClientModal onClose={() => setModal(false)}/>}</>;
+  const [paywall, setPaywall] = useState(false);
+  return <>
+    <TrainerDashboard onAddClient={() => setModal(true)}/>
+    {modal && <ClientModal onClose={() => setModal(false)} onPaywall={() => setPaywall(true)}/>}
+    {paywall && <LifetimePaywall onClose={() => setPaywall(false)}/>}
+  </>;
 }
 
-function ClientModal({ onClose, client }: { onClose:()=>void; client?:Client }) {
+function ClientModal({ onClose, onPaywall = () => {}, client }: { onClose:()=>void; onPaywall?:()=>void; client?:Client }) {
   const addClient = useFloor(s=>s.addClient);
   const updateClient = useFloor(s=>s.updateClient);
   const unit = useFloor(s=>s.unit);
@@ -108,7 +116,13 @@ function ClientModal({ onClose, client }: { onClose:()=>void; client?:Client }) 
       notes:String(f.get("notes")||""), restSeconds:client?.restSeconds??90, since:client?.since??todayIso(),
       sessions:client?.sessions??[], routines:client?.routines??[], weeklyPlan:client?.weeklyPlan??{}, bodyweight:client?.bodyweight??[],
     };
-    if(client) updateClient(client.id,obj); else addClient(obj); onClose();
+    if(client) { updateClient(client.id,obj); onClose(); return; }
+    if(!addClient(obj)) {
+      setError(`The free plan includes up to ${FREE_CLIENT_LIMIT} clients. Unlock lifetime access to add more. Your existing client records are unchanged.`);
+      onPaywall();
+      return;
+    }
+    onClose();
   };
   return <Modal title={client?"Edit athlete":"Add an athlete"} onClose={onClose} wide><form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
     <div className="sm:col-span-2"><label className={labelClass} htmlFor="client-name">Athlete name</label><input id="client-name" name="name" autoFocus required defaultValue={client?.name} className={fieldClass} placeholder="First and last name" data-testid="input-client-name"/></div>
@@ -201,6 +215,8 @@ function SettingsPage() {
   const native=isAndroidApp();
   const [restoreText,setRestoreText]=useState("");
   const [confirmRestore,setConfirmRestore]=useState(false);
+  const [paywall,setPaywall]=useState(false);
+  const billing=useBillingSnapshot();
   const fileRef=useRef<HTMLInputElement>(null);
   const clients=useFloor(s=>s.clients);
   const exportFile=async()=>{
@@ -222,13 +238,33 @@ function SettingsPage() {
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-3 text-xs leading-relaxed text-[hsl(38_95%_80%)]"><CircleHelp className="mt-0.5 shrink-0" size={15}/><span>Backups include personal coaching notes and measurements. Store the file somewhere private.</span></div>
           {status&&<p role="status" className="mt-4 rounded-xl bg-[hsl(var(--accent))] px-3 py-2 text-sm" data-testid="status-settings">{status}</p>}
         </Card></div>
-      <div className="space-y-5"><Card className="overflow-hidden"><div className="bg-[hsl(var(--primary))] p-5 text-[hsl(var(--primary-foreground))]"><div className="flex items-start justify-between"><div><p className="mono text-[10px] uppercase tracking-widest opacity-60">Local-first by design</p><h2 className="display-font mt-3 text-2xl font-semibold">One browser.<br/>Your whole floor.</h2></div><ShieldCheck size={22} className="text-[hsl(var(--secondary))]"/></div><p className="mt-3 max-w-sm text-sm leading-relaxed opacity-75">CoachAura works without an internet service. It does not use an account or sync data to the cloud.</p></div><div className="space-y-3 p-5"><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><Users size={15}/></span><span className="flex-1">Athletes on this browser</span><span className="mono font-semibold">{clients.length}</span></div><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><ClipboardList size={15}/></span><span className="flex-1">Training sessions saved</span><span className="mono font-semibold">{clients.reduce((n,c)=>n+c.sessions.length,0)}</span></div></div></Card>
+      <div className="space-y-5">
+        <Card className="p-5" data-testid="card-lifetime-entitlement">
+          <SectionTitle kicker="CoachAura plan" title={billing.status==="lifetime"?"Lifetime access":"Free plan"}/>
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            {billing.status==="lifetime"
+              ? "Unlimited client profiles are enabled on this device."
+              : `Create up to ${FREE_CLIENT_LIMIT} client profiles for free. A one-time Google Play purchase unlocks unlimited clients; there are no subscriptions.`}
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" className={primaryBtn} onClick={()=>setPaywall(true)} data-testid="button-open-lifetime-paywall">
+              {billing.status==="lifetime"?"Purchase details":"Unlock lifetime"}
+            </button>
+            <button type="button" className={quietBtn} onClick={()=>void billingController.refresh()} data-testid="button-settings-restore">
+              Recheck / restore
+            </button>
+          </div>
+          {billing.message&&<p role="status" className="mt-3 rounded-xl bg-[hsl(var(--muted))] px-3 py-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]" data-testid="status-entitlement">{billing.message}</p>}
+          {billing.price&&<p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">Current Google Play price: <span className="font-semibold text-[hsl(var(--foreground))]">{billing.price}</span> · one-time</p>}
+        </Card>
+        <Card className="overflow-hidden"><div className="bg-[hsl(var(--primary))] p-5 text-[hsl(var(--primary-foreground))]"><div className="flex items-start justify-between"><div><p className="mono text-[10px] uppercase tracking-widest opacity-60">Local-first by design</p><h2 className="display-font mt-3 text-2xl font-semibold">One browser.<br/>Your whole floor.</h2></div><ShieldCheck size={22} className="text-[hsl(var(--secondary))]"/></div><p className="mt-3 max-w-sm text-sm leading-relaxed opacity-75">CoachAura works without an internet service. It does not use an account or sync data to the cloud.</p></div><div className="space-y-3 p-5"><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><Users size={15}/></span><span className="flex-1">Athletes on this browser</span><span className="mono font-semibold">{clients.length}</span></div><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><ClipboardList size={15}/></span><span className="flex-1">Training sessions saved</span><span className="mono font-semibold">{clients.reduce((n,c)=>n+c.sessions.length,0)}</span></div></div></Card>
         <Card className="border-[hsl(var(--destructive))]/25 p-5"><p className="mono text-[10px] uppercase tracking-widest text-[hsl(var(--destructive))]">Demo data</p><h3 className="display-font mt-2 text-lg font-semibold">Reset the demo floor</h3><p className="mt-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">The starter athletes are clearly marked as demo. Reset brings the original examples back and removes local changes.</p><button onClick={reset} className={`${quietBtn} mt-4 text-[hsl(var(--destructive))]`} data-testid="button-reset-demo"><Activity size={15}/>Reset demo data</button></Card>
         <div className="px-1 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">Training engine derived from GymMane by InlitX and contributors. Licensed under GNU GPL-3.0. See included LICENSE and third_party/gymmane/NOTICE.</div>
       </div>
     </div>
     <button className={`${quietBtn} mt-4`} onClick={()=>{void exportOriginalStorage(true).then(setStatus).catch(error=>setStatus(error instanceof Error?error.message:"Could not export recovery copy."));}} data-testid="button-export-before-restore">Download pre-restore copy</button>
     {confirmRestore&&<BackupRestoreDialog raw={restoreText} onClose={()=>{setConfirmRestore(false);setRestoreText("")}} onRestored={()=>{setStatus("Backup restored and saved on this device. A pre-restore recovery copy is available.");setConfirmRestore(false);setRestoreText("")}}/>}
+    {paywall&&<LifetimePaywall onClose={()=>setPaywall(false)}/>}
   </>;
 }
 
@@ -238,6 +274,7 @@ function NotFoundPage() {
 
 function App() {
   const health=usePersistenceHealth();
+  useEffect(()=>{void initializePlayBilling();},[]);
   useEffect(()=>{void Promise.resolve(useFloor.persist.rehydrate()).catch(()=>{});},[]);
   if(health.phase==="read-error")return <PersistenceStatus/>;
   if(health.phase==="loading") return <div className="flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-6"><div className="w-full max-w-sm"><div className="mb-5 h-8 w-36 animate-pulse rounded-lg bg-[hsl(var(--muted))]"/><div className="h-36 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/><div className="mt-4 h-20 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/></div></div>;

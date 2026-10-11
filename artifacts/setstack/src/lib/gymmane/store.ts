@@ -11,6 +11,8 @@ import { kProgramTemplates } from "./programs.ts";
 import { seedClients } from "./seed.ts";
 import { uid, type SetKind, type Unit } from "./engine.ts";
 import { MUSCLE_GROUPS, type MuscleGroup } from "./muscle-activity.ts";
+import { hasBillingLifetimeAccess } from "../billing/access.ts";
+import { canCreateClient } from "../billing/entitlement.ts";
 
 type FloorState = {
   clients: Client[];
@@ -21,7 +23,7 @@ type FloorState = {
   notice: string | null;
   setUnit: (unit: Unit) => void;
   setNotice: (notice: string | null) => void;
-  addClient: (client: Client) => void;
+  addClient: (client: Client) => boolean;
   updateClient: (id: string, patch: Partial<Client>) => void;
   deleteClient: (id: string) => void;
   setRest: (id: string, seconds: number) => void;
@@ -90,7 +92,12 @@ export const useFloor = create<FloorState>()(
       notice: null,
       setUnit: (unit) => set({ unit }),
       setNotice: (notice) => set({ notice }),
-      addClient: (client) => set({ clients: [client, ...get().clients] }),
+      addClient: (client) => {
+        const clients = get().clients;
+        if (!canCreateClient(clients.length, hasBillingLifetimeAccess())) return false;
+        set({ clients: [client, ...clients] });
+        return true;
+      },
       updateClient: (id, patch) =>
         set({ clients: patchClient(get().clients, id, (client) => ({ ...client, ...patch, id: client.id })) }),
       deleteClient: (id) =>

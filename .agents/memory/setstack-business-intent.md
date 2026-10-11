@@ -3,11 +3,11 @@ name: CoachAura commercial intent
 description: The user's stated commercial positioning for the Android product.
 ---
 
-The user intends CoachAura (formerly SetStack) to be a downloadable Android APK sold to personal trainers for a one-off lifetime payment of 399 SEK.
+The user intends CoachAura to offer up to three client profiles free, with unlimited clients unlocked by a one-time Google Play purchase of `coachaura_lifetime`, initially priced at 299 SEK. There are no subscriptions or mandatory accounts.
 
-**Why:** This is the user's stated product and pricing goal, not a feature implemented by the code.
+**Why:** This is the user's current stated product and pricing model; Play Console still needs to be configured before real purchases can be verified.
 
-**How to apply:** Keep Android installation, safe updates, data portability, and GPL source obligations in mind for release work. Do not assume that payment or entitlement has been implemented.
+**How to apply:** Display the localized price returned by Google Play, preserve local data when the cap is reached, and distinguish client-side purchase checks from server-side verification.
 
 The rename is a display-branding change, not a new installation or data migration.
 
