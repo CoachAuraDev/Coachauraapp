@@ -8,6 +8,10 @@ on:
         required: false
         type: boolean
         default: false
+      highest_play_version_code:
+        description: "Highest versionCode already used in Play Console; required only when building the AAB"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -41,12 +45,15 @@ jobs:
           java-version: 21
       - name: Install Android SDK 36
         shell: bash
-        run: node artifacts/setstack/scripts/setup-android-ci.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-android-sdk.log"
+        run: |
+          set -euo pipefail
+          node artifacts/setstack/scripts/setup-android-ci.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-android-sdk.log"
       - run: pnpm install --frozen-lockfile
       - name: Check calculation and data regressions
         run: |
           node --test artifacts/setstack/scripts/setup-android-ci.test.mjs
           node --test artifacts/setstack/scripts/verify-android-upgrade.test.mjs
+          node --test artifacts/setstack/scripts/verify-play-release.test.mjs
           pnpm --filter @workspace/setstack run test:unit
       - name: Build and sync the bundled web app
         run: pnpm --filter @workspace/setstack run android:sync
@@ -54,13 +61,16 @@ jobs:
         working-directory: artifacts/setstack/android
         shell: bash
         run: |
+          set -euo pipefail
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee "$RUNNER_TEMP/setstack-gradle.log"
           test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Verify signed APK metadata and CoachAura configuration
         working-directory: artifacts/setstack
         shell: bash
-        run: node scripts/verify-android-upgrade.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-apk-verification.log"
+        run: |
+          set -euo pipefail
+          node scripts/verify-android-upgrade.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-apk-verification.log"
       - name: Downloadable APK
         uses: actions/upload-artifact@v6
         with:
@@ -68,6 +78,14 @@ jobs:
           path: artifacts/setstack/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
+
+      - name: Validate Play release version
+        if: ${{ inputs.build_release }}
+        working-directory: artifacts/setstack
+        shell: bash
+        env:
+          COACHAURA_HIGHEST_PLAY_VERSION_CODE: ${{ inputs.highest_play_version_code }}
+        run: node scripts/verify-play-release.mjs
 
       - name: Prepare optional Play upload signing
         id: release-signing
@@ -79,6 +97,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.COACHAURA_UPLOAD_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.COACHAURA_UPLOAD_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           missing=()
           [[ -n "$KEYSTORE_BASE64" ]] || missing+=(COACHAURA_UPLOAD_KEYSTORE_BASE64)
           [[ -n "$STORE_PASSWORD" ]] || missing+=(COACHAURA_UPLOAD_STORE_PASSWORD)
@@ -118,6 +137,7 @@ jobs:
           COACHAURA_RELEASE_KEY_ALIAS: ${{ secrets.COACHAURA_UPLOAD_KEY_ALIAS }}
           COACHAURA_RELEASE_KEY_PASSWORD: ${{ secrets.COACHAURA_UPLOAD_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           ./gradlew bundleRelease --no-daemon --stacktrace --console=plain 2>&1 | tee "$RUNNER_TEMP/setstack-release-bundle.log"
           test -s app/build/outputs/bundle/release/app-release.aab
 

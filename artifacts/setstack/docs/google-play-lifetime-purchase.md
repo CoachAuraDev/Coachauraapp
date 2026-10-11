@@ -61,13 +61,48 @@ secrets:
 - `COACHAURA_UPLOAD_KEY_ALIAS` — upload-key alias.
 - `COACHAURA_UPLOAD_KEY_PASSWORD` — upload-key password.
 
-Use the existing Play Console upload key for this app. Do not generate a
-replacement key or commit it to the repository. The workflow writes the decoded
-keystore only to the hosted runner's temporary directory, verifies the AAB
-signature, and removes that temporary file. If secrets are absent and the release
-option is not selected, the debug APK build still succeeds. If release is
-requested without all four secrets, the debug APK is uploaded and the job then
-fails with the missing secret names.
+When `build_release` is checked, also enter `highest_play_version_code` from the
+highest version already used in Play Console. The workflow requires the configured
+Gradle version code to be greater before it attempts release signing. Current
+Gradle metadata is `app.setstack.trainer`, version code `2`, version name `1.0.1`.
+The workflow summary reports these configured values; the AAB still needs a
+successful signed build before it exists.
+
+### Create and back up the upload key
+
+For an app that has **not** been enrolled/uploaded to Play before, create one
+persistent upload keystore on a trusted computer (not in Actions), and keep the
+passwords out of command history:
+
+```sh
+keytool -genkeypair -v -keystore coachaura-upload.jks \
+  -alias coachaura-upload -keyalg RSA -keysize 2048 -validity 10000
+```
+
+Enter the keystore and key passwords only at the interactive prompts. Keep the
+`.jks` file and both passwords in at least two encrypted, access-controlled
+backup locations separate from the repository. Record the alias and certificate
+fingerprint with the key backup. Do not email the keystore or put it in source
+control. For an app already configured in Play Console, use its **existing**
+upload key; never create a replacement just because a local/Actions copy is
+missing.
+
+In **Play Console → Setup → App integrity → Play App Signing**, enroll the app
+and register the upload certificate as requested. Google Play App Signing keeps
+the app-signing key that signs APKs delivered to users; the persistent upload key
+only authenticates the AAB you submit. Preserve both roles and do not confuse the
+upload certificate with the Play app-signing certificate. If an existing upload
+key is lost, follow Play Console's key-reset process rather than silently
+generating a different key.
+
+Encode the keystore on the trusted computer as one line (Linux):
+`base64 -w 0 coachaura-upload.jks`. Add that output and the three values as the
+four GitHub repository secrets listed above; never paste them into chat or logs.
+The workflow writes the decoded keystore only to the hosted runner's temporary
+directory, verifies the AAB signature, and removes that temporary file. If the
+release option is off, debug APK builds need neither these secrets nor a cached
+debug keystore. If release is requested without all four secrets, the debug APK
+is uploaded first and the job then fails with the missing secret names.
 
 The AAB is an upload-signed artifact, not a Play release or a claim that Play
 will accept the version. The current Gradle version is `versionCode 2` /
