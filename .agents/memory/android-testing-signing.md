@@ -26,3 +26,13 @@ revision, not download names or successful job status. Do not replace the
 installed-certificate baseline with a newer artifact's certificate just to make
 the guard pass. Confirm which installation remains on the phone before planning
 an update or an explicitly approved backup-based migration.
+
+Only update the certificate baseline after the owner confirms a replacement
+installation and the supplied APK's certificate has been inspected.
+
+**Why:** the owner confirmed reinstalling a later debug APK with a different
+certificate; retaining the original baseline would check the wrong installation.
+
+**How to apply:** retain historical certificate evidence in the audit document,
+and change only the expected public identity. Do not rotate keys or imply that
+data from the removed installation survived.
