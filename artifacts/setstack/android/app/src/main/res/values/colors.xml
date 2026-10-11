@@ -3,6 +3,7 @@
     <color name="colorPrimary">#B7F34A</color>
     <color name="colorPrimaryDark">#0B0B0D</color>
     <color name="colorAccent">#B7F34A</color>
+    <color name="coachaura_icon_background">#000000</color>
     <color name="setstack_background">#0B0B0D</color>
     <color name="setstack_card">#17171B</color>
     <color name="setstack_elevated">#222228</color>
