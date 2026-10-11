@@ -1,9 +1,14 @@
 <svg width="432" height="432" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
-  <g fill="#B7F34A" font-family="DejaVu Sans, Arial, sans-serif" font-size="12.5" font-weight="700">
-    <text x="54" y="49" text-anchor="middle" textLength="62" lengthAdjust="spacingAndGlyphs">CoachAura</text>
+  <g fill="#B7F34A" font-family="DejaVu Sans, Arial, sans-serif" font-size="12.5" font-weight="400">
+    <text x="54" y="47" text-anchor="middle" textLength="62" lengthAdjust="spacingAndGlyphs">CoachAura</text>
   </g>
-  <g fill="none" stroke="#B7F34A" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M42 61H66" stroke-width="3.8"/>
-    <path d="M38 56V66M70 56V66" stroke-width="5"/>
+  <g fill="#B7F34A">
+    <rect x="41.8" y="59.2" width="24.4" height="1.15" rx=".575"/>
+    <rect x="40.2" y="54.6" width="1.35" height="11.5" rx=".6"/>
+    <rect x="66.45" y="54.6" width="1.35" height="11.5" rx=".6"/>
+    <rect x="38.6" y="56.4" width="1.05" height="7.9" rx=".45"/>
+    <rect x="68.35" y="56.4" width="1.05" height="7.9" rx=".45"/>
+    <rect x="37.35" y="58.65" width=".8" height="3.4" rx=".3"/>
+    <rect x="70.0" y="58.65" width=".8" height="3.4" rx=".3"/>
   </g>
 </svg>

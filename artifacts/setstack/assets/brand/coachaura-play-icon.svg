@@ -1,10 +1,15 @@
 <svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
   <rect width="512" height="512" fill="#000000"/>
   <text x="256" y="241" text-anchor="middle" fill="#B7F34A"
-    font-family="DejaVu Sans, Arial, sans-serif" font-size="78" font-weight="700"
-    textLength="438" lengthAdjust="spacingAndGlyphs">CoachAura</text>
-  <g fill="none" stroke="#B7F34A" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M163 298H349" stroke-width="15"/>
-    <path d="M151 267V329M361 267V329" stroke-width="17"/>
+    font-family="DejaVu Sans, Arial, sans-serif" font-size="68" font-weight="400"
+    textLength="390" lengthAdjust="spacingAndGlyphs">CoachAura</text>
+  <g transform="translate(158 0)" fill="#B7F34A">
+    <rect x="22" y="276" width="152" height="7" rx="3.5"/>
+    <rect x="16" y="254" width="8" height="52" rx="3"/>
+    <rect x="172" y="254" width="8" height="52" rx="3"/>
+    <rect x="7" y="262" width="6" height="36" rx="2.5"/>
+    <rect x="183" y="262" width="6" height="36" rx="2.5"/>
+    <rect x="0" y="272" width="4" height="16" rx="1.5"/>
+    <rect x="192" y="272" width="4" height="16" rx="1.5"/>
   </g>
 </svg>

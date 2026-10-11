@@ -1,4 +1,3 @@
-import { Dumbbell } from "lucide-react";
 import { Link } from "wouter";
 
 type BrandLockupProps = {
@@ -20,18 +19,28 @@ export function BrandLockup({
       className={`flex flex-col items-center text-center ${className}`}
     >
       <span
-        className={`display-font font-bold leading-none tracking-tight text-[hsl(var(--sidebar-primary))] ${
+        className={`font-sans font-light leading-none tracking-[0.01em] text-[hsl(var(--sidebar-primary))] ${
           compact ? "text-lg" : "text-xl"
         }`}
       >
         CoachAura
       </span>
-      <Dumbbell
+      <svg
         aria-hidden="true"
-        size={compact ? 18 : 21}
-        strokeWidth={2.4}
-        className="mt-2.5 text-[hsl(var(--sidebar-primary))]"
-      />
+        viewBox="0 0 196 52"
+        className={`mt-1.5 text-[hsl(var(--sidebar-primary))] ${
+          compact ? "h-[13px] w-[49px]" : "h-4 w-[61px]"
+        }`}
+        fill="currentColor"
+      >
+        <rect x="22" y="22" width="152" height="8" rx="4" />
+        <rect x="16" y="0" width="8" height="52" rx="3" />
+        <rect x="172" y="0" width="8" height="52" rx="3" />
+        <rect x="7" y="8" width="6" height="36" rx="2.5" />
+        <rect x="183" y="8" width="6" height="36" rx="2.5" />
+        <rect x="0" y="18" width="4" height="16" rx="1.5" />
+        <rect x="192" y="18" width="4" height="16" rx="1.5" />
+      </svg>
     </Link>
   );
 }
