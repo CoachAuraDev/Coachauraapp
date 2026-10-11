@@ -35,6 +35,7 @@ jobs:
       - name: Check calculation and data regressions
         run: |
           node --test artifacts/setstack/scripts/setup-android-ci.test.mjs
+          node --test artifacts/setstack/scripts/verify-android-upgrade.test.mjs
           pnpm --filter @workspace/setstack run test:unit
       - name: Build and sync the bundled web app
         run: pnpm --filter @workspace/setstack run android:sync
@@ -45,6 +46,9 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee "$RUNNER_TEMP/setstack-gradle.log"
           test -s app/build/outputs/apk/debug/app-debug.apk
+      - name: Verify signature and compatibility with the installed test APK
+        working-directory: artifacts/setstack
+        run: node scripts/verify-android-upgrade.mjs
       - name: Downloadable APK
         uses: actions/upload-artifact@v6
         with:

@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
+import { isHandledPersistenceFailure } from './src/lib/gymmane/persistence-error-marker';
 
 const rawPort = process.env.PORT;
 
@@ -34,7 +35,7 @@ export default defineConfig({
     tailwindcss(),
     // Storage failures already have a blocking, actionable recovery screen.
     // Keep the development overlay for unexpected errors only.
-    runtimeErrorOverlay({ filter: (error) => error.name !== "PersistenceFailure" }),
+    runtimeErrorOverlay({ filter: (error) => !isHandledPersistenceFailure(error) }),
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [

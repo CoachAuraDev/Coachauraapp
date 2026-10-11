@@ -6,3 +6,4 @@
 - [Client muscle dashboard choice](gymmane-analytics-fidelity.md) — CoachAura dashboard replaces the GymMane profile graph; retain GPL attribution and stored workout data.
 - [Persistence failure contract](persistence-failure-contract.md) — publish only durable changes; preserve unreadable data and unfinished input for explicit recovery.
 - [Development error overlay](dev-error-overlay-transport.md) — custom error names are dropped in transport; name-based filtering did not unblock recovery controls.
+- [Android testing signing](android-testing-signing.md) — installed build is GitHub Actions debug; verify the original test key and plan commercial-signing migration explicitly.

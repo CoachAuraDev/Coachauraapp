@@ -1,0 +1,10 @@
+{
+  "applicationId": "app.setstack.trainer",
+  "versionCode": 1,
+  "versionName": "1.0",
+  "minSdkVersion": 24,
+  "targetSdkVersion": 36,
+  "hostname": "localhost",
+  "androidScheme": "https",
+  "certificateSha256": "dfd0a0abb60da9a886dfdfeeb10b076240de58f1fcf5ea7a4406d11da796f8cd"
+}

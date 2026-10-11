@@ -1,5 +1,6 @@
 import type { StateCreator, StoreApi } from "zustand";
 import type { PersistOptions } from "zustand/middleware";
+import { PERSISTENCE_FAILURE_MARKER } from "./persistence-error-marker.ts";
 
 export type PersistenceHealth = {
   phase: "loading" | "ready" | "read-error" | "write-error";
@@ -14,7 +15,7 @@ function report(phase: PersistenceHealth["phase"], message = "") {
   listeners.forEach((listener) => listener());
 }
 export class PersistenceFailure extends Error {
-  constructor(message: string) { super(message); this.name = "PersistenceFailure"; }
+  constructor(message: string) { super(PERSISTENCE_FAILURE_MARKER + message); this.name = "PersistenceFailure"; }
 }
 let recoveryWrite = false;
 let attempted: unknown = null;

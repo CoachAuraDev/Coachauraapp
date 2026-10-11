@@ -14,4 +14,6 @@ Window listener interception also did not resolve those tests.
 **How to apply:** scope any future filtering to a stable, transported marker for
 explicitly handled persistence failures; preserve overlays for unexpected errors.
 Verify the actual plugin transport and recovery clicks rather than assuming
-server-side errors retain their original class identity.
+server-side errors retain their original class identity. A persistence-specific
+message marker passed both the real plugin-transport regression and the private
+browser's normal-click export/retry flow; retain that distinction.
