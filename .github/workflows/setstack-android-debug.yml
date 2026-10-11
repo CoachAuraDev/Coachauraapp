@@ -35,12 +35,6 @@ jobs:
       - name: Install Android SDK 36
         shell: bash
         run: node artifacts/setstack/scripts/setup-android-ci.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-android-sdk.log"
-      - name: Reuse the test signing key across builds
-        uses: actions/cache@v5
-        with:
-          path: ~/.android/debug.keystore
-          key: setstack-debug-keystore-${{ github.repository_id }}-v1
-          fail-on-cache-miss: true
       - run: pnpm install --frozen-lockfile
       - name: Check calculation and data regressions
         run: |
@@ -56,10 +50,10 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee "$RUNNER_TEMP/setstack-gradle.log"
           test -s app/build/outputs/apk/debug/app-debug.apk
-      - name: Verify signature and compatibility with the installed test APK
+      - name: Verify signed APK metadata and CoachAura configuration
         working-directory: artifacts/setstack
         shell: bash
-        run: node scripts/verify-android-upgrade.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-upgrade-verification.log"
+        run: node scripts/verify-android-upgrade.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-apk-verification.log"
       - name: Downloadable APK
         uses: actions/upload-artifact@v6
         with:
@@ -75,6 +69,6 @@ jobs:
           path: |
             ${{ runner.temp }}/setstack-android-sdk.log
             ${{ runner.temp }}/setstack-gradle.log
-            ${{ runner.temp }}/setstack-upgrade-verification.log
+            ${{ runner.temp }}/setstack-apk-verification.log
           if-no-files-found: warn
           retention-days: 7

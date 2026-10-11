@@ -40,52 +40,50 @@ screenshot shows a **re-run** at commit `2d19783`. Inspection of that historical
 commit confirms SetStack branding, version `1` / `1.0`, and the old light theme.
 A changed run heading does not change the checked-out commit.
 
-The guard baseline now reflects the APK the owner explicitly confirmed
-reinstalling, not the removed original installation. This updates an expected
-public certificate only; it does not generate, replace or recover a signing key.
-Actual signature verification and compatibility of the cached key still require
-the cloud check. A differently signed build must still fail closed.
+The audit baseline records the APK the owner confirmed installing, not the
+removed original installation. That certificate remains useful as historical
+evidence. The debug build no longer requires it, since this build is for a fresh
+installation rather than a data-preserving update.
 
 Uninstalling normally removes private app storage. Do not claim that original
 client records survived this reinstall. Preserve any prior exports for validated
 restoration; do not uninstall again to work around an update failure.
 
-## Prepared protections, not a verified device upgrade
+## Android debug build configuration
 
-### Confirmed cloud compilation and signing blocker — 2026-10-11
+### Previous guarded-build failure — 2026-10-11
 
 The supplied current-run logs show 67 application, four SDK-setup and four
 upgrade-metadata tests passing. The web build and Capacitor sync succeeded.
 Gradle reported `BUILD SUCCESSFUL in 2m 41s`; the subsequent nonempty-APK check
-passed. An APK existed on that cloud runner, but it was not uploaded.
+passed. An APK existed on that cloud runner, but it was not uploaded by the
+earlier compatibility gate.
 
-The signing-key restore reported **Cache not found**. The produced APK then
-failed the installed-certificate comparison. This is not a compilation error:
-no matching installed-app private key was restored, and upload was intentionally
-blocked. The cloud APK is not present in this workspace.
+That run reported **Cache not found**. The old workflow then either stopped
+before Gradle (the fail-closed revision) or rejected the APK at the installed
+certificate comparison (the earlier revision). This was a signing-policy
+failure, not the Gradle compilation failure. The runner APK was not uploaded
+and is not present in this workspace.
 
-The workflow now stops at a cache miss, before Gradle can silently produce a
-different debug signer. Verification logs are retained in the failure artifact,
-with Bash pipefail preserving the verification command's failure status.
+### Current fresh-install build policy
 
-This safety fix does not recover the missing key. Repeating builds, changing the
-expected fingerprint, or saving a freshly generated key would not make it
-compatible with the current installation. A matching key must be recovered from
-a surviving secure copy/cache, or the owner must approve a backed-up migration
-to a new signing identity. Do not send a private keystore or password in chat.
+The Android app Gradle file does not configure a custom debug signing
+certificate. Gradle's standard `debug` build type automatically uses and
+generates its normal debug keystore on the GitHub runner. The build workflow now
+omits the required-cache step, so no saved original key or committed private key
+is needed.
 
-The source now uses version code `2` and version name `1.0.1`, retaining the same
-package and storage origin. The GitHub debug build now verifies the produced
-APK with Android's `apksigner`, then checks its certificate against the confirmed
-current-installation baseline,
-its package/version/SDK metadata with `aapt`, and its embedded Capacitor origin
-and CoachAura branding. A mismatch stops the build **before APK upload**.
+The source retains application ID `app.setstack.trainer`, version code `2`,
+version name `1.0.1` and the existing web app data/configuration. The build
+verifies that the APK signature is valid, that it has one SHA-256 signer, and
+that its package/version/SDK metadata, CoachAura label and bundled Capacitor
+origin match the app. It does not compare the new certificate to the phone's
+certificate. The APK is uploaded only after these checks pass.
 
-The existing workflow caches the debug keystore. This only helps if that cached
-key matches the current installation and remains available. The certificate check will
-detect a different/recreated key. A cached key's compatibility has not been
-verified in this workspace. Never overwrite or rotate it to silence the guard.
-An APK does not contain its private signing key.
+The build was not rerun after this workflow change, so no APK has yet been
+produced or downloaded from the updated workflow. The earlier cloud Gradle
+success applies to compilation; the updated run still needs to verify the new
+signing and artifact-upload path.
 
 ### Read-only recovery investigation
 
@@ -105,29 +103,29 @@ inconclusive. Do not create or substitute a key to make this diagnostic pass.
 
 The metadata regression tests use clearly marked CLI fixtures. They are not
 native instrumented tests, Android launch tests or full APK-signature tests.
-No new APK was generated as part of this preparation.
+No APK was generated as part of the earlier signing-key investigation.
 
 The read-only signing-recovery workflow itself also has regression tests for
 cache inventory validation, historical-run selection, and safe log summaries.
 These are code/fixture tests; GitHub API access and previous-run inspection only
 become verified when the owner runs the workflow and reviews its report.
 
-## Steps before testing an update on your phone
+## Build and download a debug APK
 
-1. Export your existing app's client data to a permanent file and confirm it
-   exists. Keep the original APK too.
-2. After reviewing these changes, push them to your GitHub repository.
-3. Run **Actions → Build CoachAura debug APK → Run workflow**, selecting **main**.
-   Do not use **Re-run all jobs** on an old run. Check the new run's source commit
-   and its **CoachAura Android build source** summary. The artifact is named
-   `CoachAura-debug-APK-<run number>-<attempt>` to distinguish downloads.
-4. If the compatibility check fails, keep your current installation. Do not
-   uninstall or clear its data. Recover the original cached test key or plan
-   a deliberate backup-and-restore migration first.
-5. Only after the check passes, download the resulting APK and choose **Update**
-   on Android. If Android refuses an update, stop; do not uninstall as a workaround.
-6. Verify existing clients, measurements, workout history and unfinished work,
-   then close/reopen the app. These on-device checks have not been performed here.
+1. Push the updated `main` branch to GitHub. This workspace may contain commits
+   not yet pushed; verify they are included.
+2. Open **Actions → Build CoachAura debug APK → Run workflow** and select
+   **main**. Start a new run rather than rerunning an older commit.
+3. Confirm the source commit in the **CoachAura Android build source** summary.
+   When the run succeeds, open its artifacts and download
+   `CoachAura-debug-APK-<run number>-<attempt>`.
+4. The APK keeps application ID `app.setstack.trainer`, so Android will reject
+   installing it over an existing copy signed by a different key. Building the
+   APK does not uninstall anything. Replacing that installation requires
+   uninstalling it first, which erases its app-private data; that step is not
+   performed by this workflow.
+5. Installing it on a clean device is a fresh install. The APK has not yet been
+   installed or launched on a device.
 
 Your old APK has an older backup implementation. It may omit the live workout
 or preferences, so finish/save any valuable pending work before a migration.
@@ -139,9 +137,8 @@ configured, and the original release block produces an unsigned release.
 Do not reuse the debug key for commercial distribution or store a production
 key in Actions caches/source control.
 
-A newly signed release generally cannot update this debug installation directly
-because its signing identity differs. Preserve the testing installation and its
-data until an explicit migration has been planned. Production-key provisioning,
-signed-release builds, native regression tests and actual device upgrades remain
-unverified. The workspace currently has no JDK/Android SDK/device tools; the
-included cloud workflow provides those tools for the debug compatibility check.
+A commercially signed release cannot be built from this debug configuration.
+Release-key provisioning, signed-release builds, native regression tests and
+device installation remain unverified. The workspace currently has no
+JDK/Android SDK/device tools; the GitHub workflow provides those tools for debug
+builds.
