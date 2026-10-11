@@ -1,0 +1,28 @@
+name: Inspect CoachAura signing-key recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      previous_run_id:
+        description: "Successful SetStack APK build run to inspect (the last known old-app run)"
+        required: true
+        type: string
+        default: "38084521824"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - name: Inspect cache metadata and previous run logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          COACHAURA_SIGNING_CACHE_KEY: setstack-debug-keystore-${{ github.repository_id }}-v1
+          COACHAURA_PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+        run: node artifacts/setstack/scripts/inspect-signing-recovery.mjs

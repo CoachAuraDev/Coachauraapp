@@ -87,9 +87,30 @@ detect a different/recreated key. A cached key's compatibility has not been
 verified in this workspace. Never overwrite or rotate it to silence the guard.
 An APK does not contain its private signing key.
 
+### Read-only recovery investigation
+
+The repository includes a manual **Inspect CoachAura signing-key recovery**
+workflow. After pushing the reviewed changes, run it on `main` and leave its
+previous-build run ID at `38084521824`. It requests only GitHub `Actions: read`
+and `contents: read` permissions. It reports whether GitHub still lists the exact
+expected cache entry and checks the named successful APK run's cache restore/save
+messages. It does not build an APK, restore or upload a keystore, modify a cache,
+or access client data.
+
+A listed cache entry is only metadata; the signing certificate still has to be
+verified before relying on any key. If the cache is absent, or the retained logs
+do not establish that it was saved, that does not rule out a separate secure
+copy. If GitHub no longer retains the previous logs, the result must remain
+inconclusive. Do not create or substitute a key to make this diagnostic pass.
+
 The metadata regression tests use clearly marked CLI fixtures. They are not
 native instrumented tests, Android launch tests or full APK-signature tests.
 No new APK was generated as part of this preparation.
+
+The read-only signing-recovery workflow itself also has regression tests for
+cache inventory validation, historical-run selection, and safe log summaries.
+These are code/fixture tests; GitHub API access and previous-run inspection only
+become verified when the owner runs the workflow and reviews its report.
 
 ## Steps before testing an update on your phone
 
