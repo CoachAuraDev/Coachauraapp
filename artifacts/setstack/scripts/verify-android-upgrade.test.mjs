@@ -9,6 +9,11 @@ const capacitor = { appId: baseline.applicationId, appName: "CoachAura", server:
 test("TEST guard accepts higher-version same-identity same-origin test APK metadata", () => {
   assert.equal(verifyUpgradeMetadata(badging, certificates, capacitor).versionCode, 2);
 });
+test("TEST confirmed reinstall baseline accepts its certificate and rejects the superseded installation", () => {
+  assert.equal(baseline.certificateSha256, "7393a705cab6cf2456acd07b2c16171597ae9b8e23cb0bf37cf94389fef294b9");
+  const superseded = "Signer #1 certificate SHA-256 digest: dfd0a0abb60da9a886dfdfeeb10b076240de58f1fcf5ea7a4406d11da796f8cd\n";
+  assert.throws(() => verifyUpgradeMetadata(badging, superseded, capacitor), /Signing certificate/);
+});
 test("TEST guard blocks signature, package, version, origin and SDK incompatibility", () => {
   assert.throws(() => verifyUpgradeMetadata(badging, certificates.replace(baseline.certificateSha256, "0".repeat(64)), capacitor), /Signing certificate/);
   assert.throws(() => verifyUpgradeMetadata(badging, certificates + certificates.replace("#1", "#2"), capacitor), /Signing certificate/);

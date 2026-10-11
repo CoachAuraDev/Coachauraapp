@@ -12,6 +12,15 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
+      - name: Record exact build source
+        shell: bash
+        run: |
+          printf 'Source commit: %s\nBranch: %s\nRun attempt: %s\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ATTEMPT"
+          {
+            echo '## CoachAura Android build source'
+            printf 'Source commit: %s\n\nBranch: %s\n\nRun attempt: %s\n\n' "$GITHUB_SHA" "$GITHUB_REF_NAME" "$GITHUB_RUN_ATTEMPT"
+            echo 'For the latest app, start Run workflow on main. Re-running an older job rebuilds its original commit.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: pnpm/action-setup@v5
         with:
           version: 10.26.1
@@ -52,7 +61,7 @@ jobs:
       - name: Downloadable APK
         uses: actions/upload-artifact@v6
         with:
-          name: CoachAura-debug-APK
+          name: CoachAura-debug-APK-${{ github.run_number }}-${{ github.run_attempt }}
           path: artifacts/setstack/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
