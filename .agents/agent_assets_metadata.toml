@@ -14,3 +14,17 @@ mtime_ms = 1791663211338
 storage_uri = "gcs://replit-rams-assets-archer/rams/assets/repl:96c8d008-026a-47b8-a25d-7cca07dca672/e9ddd2d6-0f3c-4a42-b410-589d1a9b9542/da59b63e-51a0-4132-a7de-aaa2065cdc02"
 storage_version_token = "1791663253928293"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "bVCRy55TY_Is6sO7Lub7h"
+uri = "file://artifacts/setstack/assets/brand/coachaura-play-icon-512.png"
+type = "image"
+title = "CoachAura CA icon — Google Play 512×512"
+description = "Dark charcoal square with the integrated lime CA monogram, using CoachAura’s exact #B7F34A accent."
+logical_id = "6d92e117-1257-45bb-b929-185c62b011e5"
+content_hash = "sha256:095d07ff77f312c1cbd4a70ce305f47a429c87afa9f47974949c0d0be19eeb99"
+size = 9698
+mtime_ms = 1791748764048
+storage_uri = "gcs://replit-rams-assets-archer/rams/assets/repl:96c8d008-026a-47b8-a25d-7cca07dca672/6d92e117-1257-45bb-b929-185c62b011e5/6bd3d5c8-4ef9-429e-aab7-3458765a3d1a"
+storage_version_token = "1791748855996605"
+content_type = "image/png"
