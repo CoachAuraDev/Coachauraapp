@@ -21,8 +21,6 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import org.json.JSONException;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -352,18 +350,10 @@ public final class PlayBillingPlugin extends Plugin implements PurchasesUpdatedL
     }
 
     private static void put(JSObject target, String key, Object value) {
-        try {
-            target.put(key, value);
-        } catch (JSONException ignored) {
-            // All values passed here are JSON-compatible scalar or collection values.
-        }
+        target.put(key, value);
     }
 
     private static void append(JSArray target, Object value) {
-        try {
-            target.put(value);
-        } catch (JSONException ignored) {
-            // Purchase records contain only JSON-compatible values.
-        }
+        target.put(value);
     }
 }
