@@ -184,8 +184,8 @@ export default function PrivacyPolicyPage() {
               <h2>7. Changes and contact</h2>
               <p>This policy may be updated when the app or its practices change. The effective date at the top indicates when this version applies. Please review the policy again after a significant update.</p>
               <div className="pp-contact">
-                <p><strong>Developer or business:</strong> [Developer or business name]</p>
-                <p><strong>Support:</strong> [Support email]</p>
+                <p><strong>Developer or business:</strong> CoachAura</p>
+                <p><strong>Support:</strong> coachauradev@protonmail.com</p>
                 <p>Use this contact for app and privacy-policy questions. For a request about information a trainer entered, contact that trainer directly.</p>
               </div>
             </section>
