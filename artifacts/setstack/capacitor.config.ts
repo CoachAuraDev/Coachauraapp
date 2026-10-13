@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "app.setstack.trainer",
+  appId: "app.coachaura.trainer",
   appName: "CoachAura",
   webDir: "dist/public",
   backgroundColor: "#0B0B0D",

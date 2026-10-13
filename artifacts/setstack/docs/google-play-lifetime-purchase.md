@@ -6,16 +6,20 @@ not hardcode the advertised 299 SEK price.
 
 ## Google Play Console
 
-1. Open the existing CoachAura app in Play Console. Confirm its application ID is
-   `app.setstack.trainer`.
+1. Create or select a CoachAura app in Play Console with application ID
+   `app.coachaura.trainer`. If you already have a listing under
+   `app.setstack.trainer`, Google Play does not allow changing that listing's
+   application ID; the new ID requires a separate listing and cannot update the
+   old listing's installations.
 2. In **Monetize with Play > Products > In-app products**, create a product with
    ID `coachaura_lifetime`. Use a one-time product, not a subscription. Add the
    customer-facing title and description, set the initial SEK price to 299, and
    activate the product. Add other regional prices as appropriate.
 3. In **Settings > License testing**, add the Google accounts that will test
    purchases. These accounts must also be enrolled in the relevant test track.
-4. Upload a new signed Android App Bundle to an internal testing track. Keep the
-   existing application ID and increment the app version code for the upload.
+4. Upload a signed Android App Bundle to the new app's internal testing track.
+   Use `app.coachaura.trainer` and increment the version code for later uploads
+   to this listing.
    Finish the track release and add the testers.
 5. For release-track testing, accept the tester invitation and install CoachAura
    from the Play Store test-track link. Google also permits a license tester to
@@ -64,7 +68,7 @@ secrets:
 When `build_release` is checked, also enter `highest_play_version_code` from the
 highest version already used in Play Console. The workflow requires the configured
 Gradle version code to be greater before it attempts release signing. Current
-Gradle metadata is `app.setstack.trainer`, version code `2`, version name `1.0.1`.
+Gradle metadata is `app.coachaura.trainer`, version code `2`, version name `1.0.1`.
 The workflow summary reports these configured values; the AAB still needs a
 successful signed build before it exists.
 

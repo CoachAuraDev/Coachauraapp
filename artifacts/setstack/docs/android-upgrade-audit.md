@@ -73,12 +73,14 @@ generates its normal debug keystore on the GitHub runner. The build workflow now
 omits the required-cache step, so no saved original key or committed private key
 is needed.
 
-The source retains application ID `app.setstack.trainer`, version code `2`,
-version name `1.0.1` and the existing web app data/configuration. The build
-verifies that the APK signature is valid, that it has one SHA-256 signer, and
-that its package/version/SDK metadata, CoachAura label and bundled Capacitor
-origin match the app. It does not compare the new certificate to the phone's
-certificate. The APK is uploaded only after these checks pass.
+The source now uses application ID `app.coachaura.trainer`, version code `2`,
+version name `1.0.1` and the existing web app data/configuration. This differs
+from the older `app.setstack.trainer` package: Android installs it as a separate
+app with separate local data. The build verifies that the APK signature is valid,
+that it has one SHA-256 signer, and that its package/version/SDK metadata,
+CoachAura label and bundled Capacitor origin match the app. It does not compare
+the new certificate to the phone's certificate. The APK is uploaded only after
+these checks pass.
 
 The build was not rerun after this workflow change, so no APK has yet been
 produced or downloaded from the updated workflow. The earlier cloud Gradle
@@ -119,11 +121,11 @@ become verified when the owner runs the workflow and reviews its report.
 3. Confirm the source commit in the **CoachAura Android build source** summary.
    When the run succeeds, open its artifacts and download
    `CoachAura-debug-APK-<run number>-<attempt>`.
-4. The APK keeps application ID `app.setstack.trainer`, so Android will reject
-   installing it over an existing copy signed by a different key. Building the
-   APK does not uninstall anything. Replacing that installation requires
-   uninstalling it first, which erases its app-private data; that step is not
-   performed by this workflow.
+4. The APK uses `app.coachaura.trainer`; Android treats it as separate from the
+   old `app.setstack.trainer` app. Both can remain installed, but they do not
+   share local data. Export a verified backup from the old app and restore it in
+   CoachAura to transfer records. Building the APK does not uninstall or change
+   the old app.
 5. Installing it on a clean device is a fresh install. The APK has not yet been
    installed or launched on a device.
 

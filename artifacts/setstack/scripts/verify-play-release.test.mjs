@@ -7,7 +7,7 @@ const gradle = readFileSync(new URL("../android/app/build.gradle", import.meta.u
 
 test("release metadata keeps CoachAura's package and requires a newer Play version code", () => {
   assert.deepEqual(verifyPlayReleaseConfig(gradle, "1"), {
-    applicationId: "app.setstack.trainer",
+    applicationId: "app.coachaura.trainer",
     versionCode: 2,
     versionName: "1.0.1",
     previousVersionCode: 1,
@@ -21,6 +21,6 @@ test("release version validation rejects missing, invalid, equal and higher Play
 });
 
 test("release version validation rejects an unexpected application ID or incomplete Gradle metadata", () => {
-  assert.throws(() => verifyPlayReleaseConfig(gradle.replaceAll("app.setstack.trainer", "app.other"), "1"), /Unexpected application ID/);
+  assert.throws(() => verifyPlayReleaseConfig(gradle.replaceAll("app.coachaura.trainer", "app.other"), "1"), /Unexpected application ID/);
   assert.throws(() => verifyPlayReleaseConfig("android { }", "1"), /Could not read/);
 });

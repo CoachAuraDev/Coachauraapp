@@ -9,7 +9,7 @@ def releaseSigning = [
 def hasReleaseSigning = releaseSigning.values().every { value -> value != null && !value.isBlank() }
 
 android {
-    namespace = "app.setstack.trainer"
+    namespace = "app.coachaura.trainer"
     compileSdk = rootProject.ext.compileSdkVersion
     signingConfigs {
         release {
@@ -22,7 +22,7 @@ android {
         }
     }
     defaultConfig {
-        applicationId "app.setstack.trainer"
+        applicationId "app.coachaura.trainer"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 2

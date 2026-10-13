@@ -1,8 +1,12 @@
 # CoachAura backup and persistence safety
 
 The browser and APK keep separate workspaces. Existing records still use
-`setstack-v1` and the original Zustand `{state, version: 0}` envelope. There is
-no database migration, application-ID change, or automatic deletion of records.
+`setstack-v1` and the original Zustand `{state, version: 0}` envelope. The Android
+package is changing from `app.setstack.trainer` to `app.coachaura.trainer`; the
+schema and storage key are unchanged, but Android gives the new package a separate
+private app sandbox. The old app and its data are not deleted or automatically
+copied. Export a backup from the old app and restore it in the new app to transfer
+records.
 
 ## Saving
 
@@ -69,7 +73,8 @@ or device loss. Export a permanent backup first.
 ## Release verification still required
 
 These storage regression tests do not establish Android update compatibility.
-An installed APK upgrade must keep `app.setstack.trainer`, its signing identity,
-and the WebView storage origin, and must be tested on Android. Do not install a
-differently signed APK over a testing installation by uninstalling it without
-first exporting and checking a backup.
+The renamed app uses `app.coachaura.trainer` and is a separate installation from
+`app.setstack.trainer`; Android does not share their app-private data. Preserve
+the old installation until its data has been exported and verified in a backup.
+Same-package updates still require a compatible signing identity and WebView
+storage origin, and must be tested on Android.

@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { baseline, verifyUpgradeMetadata, verifyBuiltApk } from "./verify-android-upgrade.mjs";
 
 // TEST CLI fixtures, not claims of native/device test execution.
-const badging = "package: name='app.setstack.trainer' versionCode='2' versionName='1.0.1'\nsdkVersion:'24'\ntargetSdkVersion:'36'\napplication-debuggable\napplication-label:'CoachAura'\n";
+const badging = "package: name='app.coachaura.trainer' versionCode='2' versionName='1.0.1'\nsdkVersion:'24'\ntargetSdkVersion:'36'\napplication-debuggable\napplication-label:'CoachAura'\n";
 const certificates = `Signer #1 certificate SHA-256 digest: ${baseline.certificateSha256}\n`;
 const freshDebugCertificate = `Signer #1 certificate SHA-256 digest: ${"ab".repeat(32)}\n`;
 const capacitor = { appId: baseline.applicationId, appName: "CoachAura", server: { hostname: "localhost", androidScheme: "https" } };
@@ -20,7 +20,7 @@ test("TEST APK validation blocks invalid certificates and package, version, orig
   assert.throws(() => verifyUpgradeMetadata(badging, "", capacitor), /exactly one valid SHA-256/);
   assert.throws(() => verifyUpgradeMetadata(badging, "Signer #1 certificate SHA-256 digest: 12\n", capacitor), /exactly one valid SHA-256/);
   assert.throws(() => verifyUpgradeMetadata(badging, certificates + certificates.replace("#1", "#2"), capacitor), /exactly one valid SHA-256/);
-  assert.throws(() => verifyUpgradeMetadata(badging.replace("app.setstack.trainer", "app.coachaura.new"), certificates, capacitor), /Package ID/);
+  assert.throws(() => verifyUpgradeMetadata(badging.replace("app.coachaura.trainer", "app.coachaura.new"), certificates, capacitor), /Package ID/);
   for (const version of ["0", "1"]) assert.throws(() => verifyUpgradeMetadata(badging.replace("versionCode='2'", `versionCode='${version}'`), certificates, capacitor), /Version code/);
   assert.throws(() => verifyUpgradeMetadata(badging.replace("sdkVersion:'24'", "sdkVersion:'26'"), certificates, capacitor), /SDK/);
   assert.throws(() => verifyUpgradeMetadata(badging.replace("targetSdkVersion:'36'", "targetSdkVersion:'35'"), certificates, capacitor), /SDK/);
@@ -51,7 +51,7 @@ test("TEST APK workflow needs no saved signing key and retains verification befo
   assert.match(workflow, /if-no-files-found: error/);
 
   const gradle = readFileSync(new URL("../android/app/build.gradle", import.meta.url), "utf8");
-  assert.match(gradle, /applicationId "app\.setstack\.trainer"/);
+  assert.match(gradle, /applicationId "app\.coachaura\.trainer"/);
   assert.match(gradle, /versionCode 2/);
   assert.match(gradle, /versionName "1\.0\.1"/);
   assert.match(workflow, /build_release:[\s\S]*?default: false/);

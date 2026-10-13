@@ -51,8 +51,14 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     const apk = resolve(process.argv[2] ?? "android/app/build/outputs/apk/debug/app-debug.apk");
     const result = verifyBuiltApk(apk, process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT);
     console.log("Debug APK signature, package, version and Capacitor checks passed:", result);
+    if (baseline.legacyApplicationId && baseline.legacyApplicationId !== baseline.applicationId) {
+      console.warn(
+        `Application ID changed from ${baseline.legacyApplicationId} to ${baseline.applicationId}; ` +
+        "Android treats this as a separate app with separate local data. Export and restore a backup to transfer records.",
+      );
+    }
     if (result.certificateSha256 !== baseline.certificateSha256) {
-      console.warn("The signer differs from the recorded historical installation. Android will not install this APK over that installation; export its data before replacing it.");
+      console.warn("The signer differs from the recorded historical APK. A same-package update with this signer would be rejected; export data before replacing an installation.");
     }
     console.log("This validates the artifact only; it does not prove an in-place update, on-device launch or real client data.");
   } catch (error) {

@@ -21,6 +21,6 @@ public class ExampleInstrumentedTest {
         // Context of the app under test.
         Context appContext = InstrumentationRegistry.getInstrumentation().getTargetContext();
 
-        assertEquals("app.setstack.trainer", appContext.getPackageName());
+        assertEquals("app.coachaura.trainer", appContext.getPackageName());
     }
 }

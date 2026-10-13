@@ -1,4 +1,4 @@
-package app.setstack.trainer;
+package app.coachaura.trainer;
 
 import com.getcapacitor.BridgeActivity;
 

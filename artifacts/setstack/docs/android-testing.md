@@ -1,16 +1,14 @@
 # CoachAura on an Android phone (debug/test build)
 
 CoachAura is the existing React/TypeScript app wrapped by Capacitor 8, **not**
-a new Flutter app. The Android application ID is `app.setstack.trainer`.
+a new Flutter app. The Android application ID is now `app.coachaura.trainer`.
 
-CoachAura is the renamed app, not a new installation. Keep this historical
-application ID and use the same signing key when installing an update.
-Do not uninstall an existing installation to force an update: that can erase
-its local data. Export a backup first.
-This is a stable testing identifier, not a verified claim to a unique
-Play Store namespace; choose an ID you control before distributing a
-release. Changing the ID later makes Android treat it as a different app
-with separate local data.
+This is a package rename from the prior `app.setstack.trainer` installation.
+Android treats it as a different app with separate local storage: installing
+CoachAura under the new ID does not update or remove the old app, and old client
+data is not automatically visible. Export and verify a backup in the old app,
+then restore it in the new app if you need to transfer records. Do not uninstall
+the old app until that transfer is verified.
 The native project is `artifacts/setstack/android/`. Capacitor bundles
 `artifacts/setstack/dist/public/` into the APK: no Replit development server
 is needed when the APK opens. The optional Google web font needs a network

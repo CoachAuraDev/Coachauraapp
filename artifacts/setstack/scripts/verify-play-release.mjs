@@ -9,8 +9,8 @@ export function verifyPlayReleaseConfig(gradleText, highestPlayVersionCode) {
   if (!applicationId || !versionCodeValue || !versionName) {
     throw new Error("Could not read applicationId, versionCode and versionName from Android Gradle configuration.");
   }
-  if (applicationId !== "app.setstack.trainer") {
-    throw new Error(`Unexpected application ID ${applicationId}; expected app.setstack.trainer.`);
+  if (applicationId !== "app.coachaura.trainer") {
+    throw new Error(`Unexpected application ID ${applicationId}; expected app.coachaura.trainer.`);
   }
 
   const currentVersionCode = Number(versionCodeValue);

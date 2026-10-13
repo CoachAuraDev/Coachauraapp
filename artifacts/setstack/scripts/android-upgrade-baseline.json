@@ -1,5 +1,6 @@
 {
-  "applicationId": "app.setstack.trainer",
+  "applicationId": "app.coachaura.trainer",
+  "legacyApplicationId": "app.setstack.trainer",
   "versionCode": 1,
   "versionName": "1.0",
   "minSdkVersion": 24,
