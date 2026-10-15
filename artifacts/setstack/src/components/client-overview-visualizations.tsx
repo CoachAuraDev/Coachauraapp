@@ -1,0 +1,258 @@
+import { useMemo, useState } from "react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  LineChart,
+  PolarAngleAxis,
+  PolarGrid,
+  PolarRadiusAxis,
+  Radar,
+  RadarChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Card } from "@/components/ui/card";
+import { MuscleMap } from "@/components/muscle-map";
+import { analyzeMuscleActivity, MUSCLE_GROUPS, type MuscleGroup } from "@/lib/gymmane/muscle-activity";
+import { muscleBalanceRadar, estimatedStrengthHistory, strengthExerciseOptions, weeklySetPoints } from "@/lib/gymmane/client-overview";
+import { formatLoad, todayIso, type Unit } from "@/lib/gymmane/engine";
+import type { CatalogExercise } from "@/lib/gymmane/catalog";
+import type { Client } from "@/lib/gymmane/models";
+
+type ClientOverviewVisualizationsProps = {
+  client: Client;
+  exerciseLibrary: readonly CatalogExercise[];
+  unit: Unit;
+};
+
+const cardClass = "rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] p-4 text-[hsl(var(--card-foreground))] sm:p-5";
+const axisTick = { fill: "hsl(var(--muted-foreground))", fontSize: 10 };
+const tooltipStyle = {
+  backgroundColor: "hsl(var(--popover))",
+  border: "1px solid hsl(var(--border))",
+  borderRadius: 12,
+  color: "hsl(var(--popover-foreground))",
+  fontSize: 12,
+};
+
+function shortDate(date: string): string {
+  const parsed = new Date(`${date}T12:00:00`);
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: ClientOverviewVisualizationsProps) {
+  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | null>(null);
+  const today = todayIso();
+  const muscleActivity = useMemo(
+    () => analyzeMuscleActivity(client, exerciseLibrary, 30, today),
+    [client, exerciseLibrary, today],
+  );
+  const radarData = useMemo(() => muscleBalanceRadar(muscleActivity.muscles), [muscleActivity]);
+  const weeklyData = useMemo(() => weeklySetPoints(client, today), [client, today]);
+  const exerciseOptions = useMemo(() => strengthExerciseOptions(client, today), [client, today]);
+  const [exerciseId, setExerciseId] = useState("");
+  const activeExerciseId = exerciseOptions.some((exercise) => exercise.id === exerciseId)
+    ? exerciseId
+    : exerciseOptions[0]?.id ?? "";
+  const strengthHistory = useMemo(
+    () => activeExerciseId ? estimatedStrengthHistory(client, activeExerciseId, today) : [],
+    [client, activeExerciseId, today],
+  );
+  const currentEstimate = strengthHistory.at(-1);
+  const firstEstimate = strengthHistory[0];
+  const estimateChange = currentEstimate && firstEstimate && strengthHistory.length >= 2
+    ? currentEstimate.e1rm - firstEstimate.e1rm
+    : null;
+  const missingGroups = radarData.filter((group) => group.weeklyEquivalent <= 0).map((group) => group.label);
+  const activeExercise = exerciseOptions.find((exercise) => exercise.id === activeExerciseId);
+
+  return (
+    <section aria-label="Client overview visualizations" className="mt-5 space-y-5" data-testid="client-overview-visualizations">
+      <div className="grid min-w-0 gap-5 xl:grid-cols-2">
+        <Card className={cardClass} data-testid="card-client-muscle-balance">
+          <div className="mb-3">
+            <p className="mono text-[10px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]">Training coverage · 30 days</p>
+            <h2 className="display-font mt-1 text-xl font-semibold tracking-tight">Muscle balance</h2>
+            <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
+              Weighted working-set equivalents, averaged per week from the last 30 days.
+            </p>
+          </div>
+          <div className="h-[300px] min-w-0 sm:h-[340px]" role="img" aria-label="Radar chart of weekly-equivalent activity by muscle group over the last 30 days">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart data={radarData} outerRadius="66%">
+                <PolarGrid stroke="hsl(var(--border))" />
+                <PolarAngleAxis dataKey="label" tick={{ ...axisTick, fontSize: 9 }} />
+                <PolarRadiusAxis angle={90} tick={false} axisLine={false} />
+                <Radar
+                  name="Weekly-equivalent sets"
+                  dataKey="weeklyEquivalent"
+                  stroke="hsl(var(--chart-1))"
+                  fill="hsl(var(--chart-1))"
+                  fillOpacity={0.22}
+                  strokeWidth={2}
+                  dot={{ r: 2, fill: "hsl(var(--chart-1))" }}
+                  isAnimationActive={false}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  formatter={(value: number) => [`${value.toFixed(1)} sets / week`, "Activity"]}
+                />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]" aria-live="polite" data-testid="text-client-unmapped-muscles">
+            {missingGroups.length
+              ? `No mapped activity recorded: ${missingGroups.join(", ")}. This reflects logged exercise mappings, not a training recommendation.`
+              : "Every mapped muscle group has some recorded activity in this period."}
+          </p>
+          {muscleActivity.unmappedExercises.length > 0 && (
+            <p className="mt-2 text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+              {muscleActivity.unmappedExercises.length} exercise{muscleActivity.unmappedExercises.length === 1 ? "" : "s"} could not be mapped to a muscle group.
+            </p>
+          )}
+          <div className="mt-4 border-t border-[hsl(var(--border))] pt-4">
+            <p className="mb-2 text-xs font-semibold">Activity map</p>
+            <MuscleMap muscles={muscleActivity.muscles} selectedMuscle={selectedMuscle} onSelect={setSelectedMuscle} />
+          </div>
+        </Card>
+
+        <div className="space-y-5">
+          <Card className={cardClass} data-testid="card-client-weekly-sets">
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div>
+                <p className="mono text-[10px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]">Completed work</p>
+                <h2 className="display-font mt-1 text-xl font-semibold tracking-tight">Sets this week</h2>
+              </div>
+              <span className="shrink-0 rounded-full bg-[hsl(var(--accent))] px-2.5 py-1 text-[10px] font-semibold text-[hsl(var(--accent-foreground))]">Mon – Sun</span>
+            </div>
+            <div className="h-[225px] min-w-0" role="img" aria-label="Completed working sets by weekday, Monday through Sunday">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={weeklyData} margin={{ top: 8, right: 4, left: -22, bottom: 0 }} barCategoryGap="25%">
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 4" />
+                  <XAxis dataKey="day" tick={axisTick} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={axisTick} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.date ? shortDate(payload[0].payload.date) : ""}
+                    formatter={(value: number) => [`${value} working sets`, "Completed"]}
+                  />
+                  <Bar dataKey="sets" radius={[5, 5, 0, 0]} maxBarSize={34} isAnimationActive={false}>
+                    {weeklyData.map((point) => (
+                      <Cell
+                        key={point.date}
+                        fill={point.isToday ? "hsl(var(--primary))" : "hsl(var(--chart-1))"}
+                        fillOpacity={point.isToday ? 1 : point.isFuture ? 0.28 : 0.68}
+                        stroke={point.isToday ? "hsl(var(--primary))" : "transparent"}
+                        strokeWidth={point.isToday ? 2 : 0}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-[hsl(var(--muted-foreground))]">
+              <span><span aria-hidden="true" className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm bg-[hsl(var(--primary))]" />Today</span>
+              <span>Warm-ups and planned sets are excluded.</span>
+            </div>
+            <ul className="sr-only" aria-label="Working sets by day">
+              {weeklyData.map((point) => <li key={point.date}>{point.day}{point.isToday ? ", today" : ""}: {point.sets} working sets</li>)}
+            </ul>
+          </Card>
+
+          <Card className={cardClass} data-testid="card-client-strength-trend">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+              <div>
+                <p className="mono text-[10px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]">Strength markers</p>
+                <h2 className="display-font mt-1 text-xl font-semibold tracking-tight">Estimated 1RM</h2>
+                <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">One best working-set estimate per completed session.</p>
+              </div>
+              {exerciseOptions.length > 0 && (
+                <label className="block min-w-0 sm:w-[48%]">
+                  <span className="sr-only">Choose exercise for estimated one-rep max trend</span>
+                  <select
+                    value={activeExerciseId}
+                    onChange={(event) => setExerciseId(event.target.value)}
+                    className="min-h-11 w-full rounded-lg border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 text-xs font-medium text-[hsl(var(--foreground))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                    aria-label="Exercise for estimated 1RM trend"
+                    data-testid="select-client-strength-exercise"
+                  >
+                    {exerciseOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}
+                  </select>
+                </label>
+              )}
+            </div>
+            {exerciseOptions.length === 0 ? (
+              <div className="mt-4 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-6 text-center">
+                <p className="text-sm font-semibold">No strength history yet</p>
+                <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Log a completed session with at least one weighted working set to see an estimate here.</p>
+              </div>
+            ) : strengthHistory.length === 0 ? (
+              <p className="mt-5 rounded-xl bg-[hsl(var(--background))] p-4 text-sm text-[hsl(var(--muted-foreground))]">No valid completed-session estimates for this exercise.</p>
+            ) : (
+              <>
+                <div className="mt-4 flex flex-wrap items-end gap-x-6 gap-y-2">
+                  <div>
+                    <p className="mono text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Current estimate</p>
+                    <p className="display-font mt-1 text-2xl font-semibold tabular-nums" data-testid="text-client-current-estimate">
+                      {formatLoad(currentEstimate!.e1rm, unit)}
+                    </p>
+                  </div>
+                  {estimateChange !== null && (
+                    <div>
+                      <p className="mono text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Change · first to latest</p>
+                      <p className={`mt-1 text-sm font-semibold tabular-nums ${estimateChange > 0 ? "text-[hsl(var(--chart-2))]" : estimateChange < 0 ? "text-[hsl(var(--muted-foreground))]" : "text-[hsl(var(--foreground))]"}`} data-testid="text-client-estimate-change">
+                        {estimateChange > 0 ? "+" : ""}{formatLoad(estimateChange, unit)}
+                      </p>
+                    </div>
+                  )}
+                  {activeExercise && <p className="ml-auto max-w-full truncate text-[10px] text-[hsl(var(--muted-foreground))]">Latest · {shortDate(currentEstimate!.date)}</p>}
+                </div>
+                <div className="mt-2 h-[190px] min-w-0" role="img" aria-label={`Estimated one-rep max trend for ${activeExercise?.name ?? "selected exercise"}`}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={strengthHistory} margin={{ top: 12, right: 8, left: -17, bottom: 0 }}>
+                      <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 4" />
+                      <XAxis dataKey="date" tickFormatter={shortDate} tick={axisTick} tickLine={false} axisLine={false} minTickGap={24} />
+                      <YAxis
+                        domain={["auto", "auto"]}
+                        tickFormatter={(value: number) => formatLoad(value, unit)}
+                        tick={axisTick}
+                        tickLine={false}
+                        axisLine={false}
+                        width={58}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        labelFormatter={(label) => shortDate(String(label))}
+                        formatter={(value: number) => [formatLoad(value, unit), "Estimated 1RM"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="e1rm"
+                        stroke="hsl(var(--chart-1))"
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: "hsl(var(--chart-1))", strokeWidth: 0 }}
+                        activeDot={{ r: 5, fill: "hsl(var(--primary))", stroke: "hsl(var(--card))", strokeWidth: 2 }}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <ul className="sr-only" aria-label="Estimated one-rep max history">
+                  {strengthHistory.map((point, index) => <li key={`${point.date}-${index}`}>{shortDate(point.date)}: {formatLoad(point.e1rm, unit)}</li>)}
+                </ul>
+              </>
+            )}
+          </Card>
+        </div>
+      </div>
+      <p className="sr-only" aria-label="Muscle groups shown in the activity map">{MUSCLE_GROUPS.map((group) => group.label).join(", ")}</p>
+    </section>
+  );
+}
+
+export default ClientOverviewVisualizations;
