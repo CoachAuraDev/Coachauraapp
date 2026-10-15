@@ -204,6 +204,107 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
   themeSwatches.set(appearances[index], chartState.chestColor);
 }
 
+async function muscleChartSnapshot(page, baseUrl, clientId) {
+  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles&period=7`, "dashboard-muscle-activity");
+  await page.click("button-muscle-chest");
+  return await page.evaluate(`({
+    workingSets: Number(document.querySelector('[data-testid="text-muscle-working-sets"]')?.textContent),
+    completedSessions: Number(document.querySelector('[data-testid="text-muscle-session-count"]')?.textContent),
+    chest: {
+      intensity: document.querySelector('[data-testid="region-muscle-chest"]')?.getAttribute("data-intensity"),
+      workload: document.querySelector('[data-testid="region-muscle-chest"]')?.getAttribute("aria-label"),
+      totalSets: document.querySelector('[data-testid="text-selected-total-sets"]')?.textContent,
+      directIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
+      weightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
+      weeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent
+    }
+  })`);
+}
+
+async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
+  const aminaBeforeCorrection = await muscleChartSnapshot(page, baseUrl, "seed-amina");
+  const leoBeforeCorrection = await muscleChartSnapshot(page, baseUrl, "seed-leo");
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((item) => item.id === "seed-amina");
+  const session = amina?.sessions.find((item) => item.id === "seed-amina-0");
+  assert.ok(session, "Amina's recent completed workout should be available in client history");
+  const correctedDate = new Date(Date.parse(`${session.date}T12:00:00.000Z`) - 8 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+  const movedWorkingSets = session.exercises.reduce(
+    (total, exercise) => total + exercise.sets.filter((set) => set.reps > 0 && set.kind !== "warmup").length,
+    0,
+  );
+  assert.ok(movedWorkingSets > 0, "The session being corrected should contribute working sets");
+
+  await navigate(page, `${baseUrl}/clients/seed-amina?tab=history`, "button-client-start-session");
+  const historyOpened = await page.evaluate(`(() => {
+    const edit = document.querySelector('[data-testid="button-edit-session-seed-amina-0"]');
+    const details = edit?.closest("details");
+    details?.querySelector("summary")?.click();
+    return !!details?.open;
+  })()`);
+  assert.equal(historyOpened, true, "Open the completed session from Amina's workout history");
+  await page.click("button-edit-session-seed-amina-0");
+  await waitFor("saved workout editor", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ));
+  await page.fill("input-edit-session-date", correctedDate);
+  await page.click("button-editor-save");
+  await waitFor("saved workout correction", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === "seed-amina");
+    return client?.sessions.find((item) => item.id === "seed-amina-0")?.date;
+  }, (date) => date === correctedDate);
+
+  const aminaAfterCorrection = await muscleChartSnapshot(page, baseUrl, "seed-amina");
+  assert.equal(
+    aminaAfterCorrection.workingSets,
+    aminaBeforeCorrection.workingSets - movedWorkingSets,
+    "Moving the completed workout out of the last 7 days should remove its working sets from the chart",
+  );
+  assert.equal(
+    aminaAfterCorrection.completedSessions,
+    aminaBeforeCorrection.completedSessions - 1,
+    "The corrected workout should no longer count as a recent completed session",
+  );
+  assert.notEqual(
+    aminaAfterCorrection.chest.workload,
+    aminaBeforeCorrection.chest.workload,
+    "The chest region on the muscle map should reflect the corrected workout date",
+  );
+  assert.notEqual(
+    aminaAfterCorrection.chest.directIndirect,
+    aminaBeforeCorrection.chest.directIndirect,
+    "The selected muscle totals should update after the correction",
+  );
+
+  assert.deepEqual(
+    await muscleChartSnapshot(page, baseUrl, "seed-leo"),
+    leoBeforeCorrection,
+    "Correcting Amina's workout must not change Leo's muscle chart",
+  );
+
+  await page.send("Page.reload", { ignoreCache: true });
+  await waitFor("reloaded client muscle dashboard", () => page.evaluate(
+    'document.querySelector(\'[data-testid="dashboard-muscle-activity"]\') !== null',
+  ));
+  const savedState = await storedState(page);
+  assert.equal(
+    savedState.clients.find((item) => item.id === "seed-amina")?.sessions.find((item) => item.id === "seed-amina-0")?.date,
+    correctedDate,
+    "The saved correction should persist after reloading",
+  );
+  assert.deepEqual(
+    await muscleChartSnapshot(page, baseUrl, "seed-amina"),
+    aminaAfterCorrection,
+    "Amina's corrected chart should remain accurate after reloading",
+  );
+  assert.deepEqual(
+    await muscleChartSnapshot(page, baseUrl, "seed-leo"),
+    leoBeforeCorrection,
+    "Leo's chart should remain unchanged after reloading",
+  );
+}
+
 async function exerciseWorkout(page, baseUrl) {
   await navigate(page, `${baseUrl}/clients/${clientId}`, "button-client-start-session");
   await page.click("button-client-start-session");
@@ -261,7 +362,7 @@ async function exerciseWorkout(page, baseUrl) {
 
 async function changeThemeAndReload(page, baseUrl, nextAppearance, savedClients) {
   await navigate(page, `${baseUrl}/settings`, "select-appearance");
-  await page.fill("select-appearance", nextAppearance);
+  await page.click(`button-appearance-${nextAppearance}`);
   await assertAppearance(page, nextAppearance);
   await navigate(page, `${baseUrl}/clients/${clientId}`, "panel-workout-logger");
   await assertAppearance(page, nextAppearance);
@@ -411,4 +512,5 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.reps, 7);
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
+  await correctSavedSessionAndVerifyCharts(page, baseUrl);
 });
