@@ -1,0 +1,309 @@
+CoachAura — Targeted UI/UX Refinement Inspired by GymMane
+
+Primary objective
+
+Improve the existing CoachAura application so it feels simpler, smoother, more intuitive, and less cluttered, taking inspiration from GymMane's straightforward gym-focused user experience.
+
+The current app feels clunky, with too much information displayed on individual screens and workout modification being more complicated than necessary.
+
+I want CoachAura to feel like a polished, professional tool that personal trainers can use quickly while working with clients in the gym.
+
+IMPORTANT: This is a targeted refinement of the existing application, NOT a complete redesign, rewrite, or rebuild.
+
+Preserve the existing application architecture, features, data, functionality, branding, and colour palette. Focus on improving usability and simplifying the existing interface.
+
+1. Non-negotiable requirements
+
+Before making changes, follow these rules:
+
+- Keep the existing CoachAura branding, app name, and visual identity.
+- Preserve the current colour palette exactly. Do not introduce a new theme, replace existing accent colours, change the overall colour scheme, or redesign the app's visual identity.
+- Preserve the existing dark/light theme functionality if implemented.
+- Preserve all existing features and working functionality.
+- Keep the current framework, application architecture, database, data models, and storage mechanisms.
+- Do not rewrite the entire application or replace working screens unnecessarily.
+- Do not delete features simply because they contribute information to a screen.
+- Do not remove existing exercise data, client records, workout history, or recovery information.
+- Do not introduce unnecessary dependencies, external services, subscriptions, paywalls, or new infrastructure.
+- Avoid changes to business logic unless required to fix a specific usability issue.
+- Do not replace existing components globally if doing so could unintentionally affect unrelated screens.
+
+The goal is to improve the existing app, not turn it into a different product.
+
+2. Inspect the current codebase first
+
+Before editing anything:
+
+1. Inspect the project structure and identify the current framework, screens, components, navigation, and data storage.
+2. Identify which screens contain too much information.
+3. Identify why modifying workouts requires too many actions.
+4. Locate reusable components that can be simplified safely.
+5. Identify any existing functionality that depends on the components being modified.
+
+Make changes incrementally, prioritising the workout editor and exercise-selection experience.
+
+Reuse existing components and styles wherever possible. Do not create a new design system from scratch when the existing one can be improved.
+
+3. Adopt GymMane's simplicity, not a new visual identity
+
+Use GymMane as inspiration for usability and information hierarchy, rather than copying its branding or assets.
+
+Improve CoachAura by introducing:
+
+- Cleaner layouts with less visual clutter.
+- More consistent spacing and alignment.
+- Clearer visual hierarchy.
+- Compact, easy-to-scan exercise lists.
+- Fewer unnecessary borders, cards, labels, and decorative elements.
+- Less duplicated information.
+- Clear primary actions.
+- Secondary information that appears only when needed.
+- Consistent button, input, and interaction patterns.
+
+Keep all existing colours, backgrounds, accents, typography choices where appropriate, and established visual identity.
+
+Do not mistake simplification for removing the app's personality. The aim is to make the current CoachAura design more refined and usable.
+
+4. Redesign the workout editor — highest priority
+
+The workout editor is the most important part of this improvement.
+
+Make creating and modifying workouts substantially faster and more intuitive.
+
+Workout layout
+
+Keep the layout straightforward:
+
+- Workout name and essential actions at the top.
+- A clean, vertically organised list of exercises.
+- Sets, reps, and weight displayed compactly.
+- Optional exercise notes accessible without dominating the screen.
+- An obvious Add Exercise action.
+- A clear and reliable way to save changes.
+
+Avoid displaying every possible setting, statistic, and control simultaneously.
+
+Do not introduce unnecessary panels, excessive cards, or complicated navigation.
+
+Editing existing exercises
+
+When a trainer taps an exercise, make its settings easy to modify.
+
+Support the existing fields where available, including:
+
+- Exercise name.
+- Number of sets.
+- Repetitions or rep ranges.
+- Weight.
+- Rest time.
+- Notes.
+
+Use compact, intuitive controls and inline editing wherever practical.
+
+For example, changing an exercise from 3 sets of 8–10 reps to 4 sets of 10–12 reps should be quick and straightforward.
+
+Avoid unnecessary confirmation dialogs, nested menus, multiple modal windows, and navigating through several screens for a simple adjustment.
+
+Do not remove existing exercise settings. Make less frequently used settings accessible when needed rather than displaying them all by default.
+
+Adding exercises
+
+Simplify the existing exercise-selection process:
+
+1. Tap Add Exercise.
+2. Search or browse the existing exercise library.
+3. Select the desired exercise.
+4. Add it directly to the current workout.
+5. Adjust sets, reps, and other relevant settings.
+
+Use a clean searchable list and make exercise names easy to scan.
+
+Preserve the existing exercise library, descriptions, demonstrations, and other associated data.
+
+Avoid rebuilding the exercise library or replacing its underlying data structures.
+
+Reordering exercises
+
+If supported by the current architecture, make it easy to:
+
+- Reorder exercises using drag and drop.
+- Duplicate an exercise.
+- Remove an exercise.
+- Duplicate an entire workout.
+- Modify an existing workout without recreating it.
+
+Implement drag-and-drop only if it can be done reliably within the current application.
+
+Save behaviour
+
+Preserve the existing saving and persistence mechanisms.
+
+Ensure that:
+
+- Changes are saved reliably.
+- Existing workouts are not accidentally overwritten or lost.
+- The user receives clear feedback when appropriate.
+- Navigation away from an edited workout does not silently discard unsaved changes.
+- Any existing autosave behaviour continues to function.
+
+Do not introduce a new database or storage architecture to accomplish these improvements.
+
+5. Simplify the client list and profiles
+
+Make client management easier to scan without removing useful information.
+
+Client list
+
+Use a clean, compact layout that prioritises:
+
+- Client name.
+- Relevant existing secondary information, where useful.
+- An obvious way to open the profile.
+- A clear Add Client action.
+
+Avoid unnecessarily large cards, redundant labels, and excessive information displayed for every client.
+
+Client profiles
+
+Organise existing information so the most important details are easy to find.
+
+Where appropriate, use clear sections for:
+
+- Client overview.
+- Workouts.
+- Training history.
+- Measurements.
+- Notes.
+
+Do not place every chart, statistic, measurement, note, and action on the same screen.
+
+Use the simplest layout that fits the current navigation and component structure. Avoid introducing complicated tab systems or extra navigation unless they genuinely improve usability.
+
+Preserve all existing client data and profile functionality.
+
+6. Simplify the dashboard
+
+Reduce information overload on the dashboard while retaining its existing functionality.
+
+- Prioritise access to clients, workouts, and the most important existing actions.
+- Reduce redundant information and repetitive headings.
+- Make important actions easy to identify.
+- Present statistics and summaries compactly.
+- Move secondary information into relevant existing screens where appropriate.
+- Avoid excessive scrolling before users can reach frequently used functions.
+
+Do not remove useful dashboard functionality or existing metrics simply to make the page look empty.
+
+The objective is a cleaner hierarchy, not the elimination of useful features.
+
+7. Improve usability across the existing application
+
+Review the remaining screens for obvious clutter and interaction problems.
+
+Where improvements can be made safely:
+
+- Standardise spacing and alignment.
+- Simplify unnecessarily complicated forms.
+- Improve button placement and consistency.
+- Make important actions easy to identify.
+- Remove redundant labels and repeated information.
+- Make icons and controls more predictable.
+- Improve empty, loading, success, and error states where needed.
+- Reduce unnecessary pop-ups and confirmation steps.
+- Keep secondary controls accessible without overwhelming the interface.
+
+Do not perform a broad rewrite of screens that are already working well.
+
+Prioritise changes that offer a meaningful usability improvement with the least risk.
+
+8. Android-first mobile experience
+
+CoachAura must remain practical to use on Android phones.
+
+Ensure that:
+
+- Exercise lists are easy to scan on small screens.
+- Touch targets are comfortable to use.
+- Numerical fields are easy to edit.
+- The keyboard does not obscure important fields or save controls.
+- Important actions remain accessible.
+- Content does not overflow horizontally.
+- Scrolling feels natural.
+- Layouts remain consistent across different screen sizes.
+- Existing theme colours maintain readable contrast.
+
+Do not change the existing colour palette to solve contrast or spacing problems. Make appropriate adjustments to component styling and layout while retaining the established colours.
+
+9. Preserve all existing functionality
+
+This requirement is critical.
+
+CoachAura must continue to support its existing features, including, wherever currently implemented:
+
+- Client profiles and records.
+- Workout creation and editing.
+- Exercise library and search.
+- Sets, reps, weights, and exercise notes.
+- Training history and progress tracking.
+- Muscle recovery maps and muscle-worked visualisations.
+- Existing charts and statistics.
+- Local data storage and persistence.
+- Existing settings and theme functionality.
+- Any other currently working features.
+
+Do not remove, disable, replace, or break existing functionality.
+
+Do not change data schemas, storage formats, or persistence mechanisms unnecessarily. If a specific change requires modifying shared code, assess the potential impact before proceeding and preserve compatibility with existing data.
+
+10. Implementation and testing
+
+Implement the changes directly in the existing project.
+
+Use this order of priority:
+
+1. Workout editor and exercise modification.
+2. Exercise selection and adding exercises.
+3. Client list and profiles.
+4. Dashboard simplification.
+5. Small, safe usability improvements across other screens.
+
+After implementation, verify:
+
+- Existing clients still appear correctly.
+- Existing workouts remain intact.
+- Exercises can be added, edited, removed, and reordered where supported.
+- Sets, reps, weights, and notes save correctly.
+- Workouts can be reopened without losing changes.
+- Data persists after restarting the application.
+- Muscle recovery and training-history features still work.
+- Existing navigation and settings remain functional.
+- The existing colour palette is unchanged.
+- Dark and light themes remain functional if supported.
+- Android layouts remain usable on small screens.
+
+Fix any regressions introduced by your changes.
+
+If automated tests exist, run the relevant tests. If the project supports a build process, verify that the application builds successfully.
+
+11. Final acceptance criteria
+
+The task is complete when:
+
+- CoachAura feels noticeably simpler and less cluttered.
+- Workout modification is faster and requires fewer unnecessary actions.
+- Exercises are easier to add and edit.
+- Client profiles and the dashboard are easier to navigate.
+- The app retains its existing visual identity and exact colour palette.
+- All existing features continue to work.
+- Existing user data remains intact.
+- The changes improve usability without introducing unnecessary architectural complexity.
+
+Final instruction
+
+Make targeted improvements to the existing CoachAura codebase. Do not rebuild the application.
+
+Start by inspecting the code, identify the highest-impact usability problems, and implement the workout-editor improvements first. Then make carefully scoped improvements to the dashboard, client profiles, and other screens where necessary.
+
+Prioritise simplicity, speed, reliability, and consistency. The final result should feel more polished and intuitive, with GymMane-inspired ease of use, while still unmistakably being CoachAura.
+
+When finished, provide a concise summary of the components changed, the usability improvements made, the tests performed, and any remaining issues.

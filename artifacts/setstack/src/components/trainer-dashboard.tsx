@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Dumbbell, Library, Play, Plus, Scale, Search, Users, X, Zap, ChevronRight, History } from "lucide-react";
+import { Dumbbell, Library, Play, Plus, Scale, Search, Users, X, Zap, ChevronDown, ChevronRight, History } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
 import { clientSummary } from "@/lib/gymmane/metrics";
 import { formatLoad, isoWeekday, shortDate, todayIso, WEEKDAYS } from "@/lib/gymmane/engine";
@@ -105,25 +105,34 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
         <p className={kicker}>Next workout</p>
         <h2 className="display-font mt-2 text-xl font-semibold">{!clients.length ? "No clients yet" : planned.length ? "Today's planned workouts are logged" : "Nothing planned for today"}</h2>
         <p className={`mt-1 text-sm ${muted}`}>{clients.length ? "Start a routine or a blank workout for any client." : "Add a client to start logging workouts."}</p>
-        <div className="mt-4 flex flex-wrap gap-2">{clients.length ? <button className={primary} onClick={() => setDlg("start")} data-testid="button-quick-start"><Zap size={16} />Start workout</button> : <button className={primary} onClick={onAddClient} data-testid="button-empty-add-client"><Plus size={16} />Add client</button>}</div>
+        {clients.length > 0 && <div className="mt-4 flex flex-wrap gap-2"><button className={primary} onClick={() => setDlg("start")} data-testid="button-quick-start"><Zap size={16} />Start workout</button></div>}
       </>}
     </section>
 
-    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4" data-testid="overview-stats">
-      {[["Clients", String(clients.length)], ["Workouts this week", String(week.workouts)], ["Sets this week", String(week.sets)], ["Volume this week", formatLoad(week.volume, unit)]].map(([l, v]) => <div key={l} className={`${card} p-3`}><p className={kicker}>{l}</p><p className="display-font mt-1 text-xl font-semibold">{v}</p></div>)}
+    <div className="mb-3 grid grid-cols-2 gap-2" data-testid="overview-stats">
+      {[["Clients", String(clients.length)], ["Workouts this week", String(week.workouts)]].map(([l, v]) => <div key={l} className={`${card} p-3`}><p className={kicker}>{l}</p><p className="display-font mt-1 text-xl font-semibold">{v}</p></div>)}
     </div>
-    <p className={`mb-4 text-xs ${muted}`}>{clients.length ? `${week.activeClients} of ${clients.length} clients trained this week${week.goal > 0 ? ` · ${week.done}/${week.goal} goal days met` : ""}. Completed workouts only; drafts excluded.` : "Your first completed workout will appear here."}</p>
 
-    <div className={`${card} mb-4 p-3`}><div className="grid grid-cols-7 gap-1.5">{week.days.map((d, i) => <div key={d.date} className={`rounded-xl bg-[hsl(var(--muted))] py-2 text-center ${i + 1 === wd ? "ring-1 ring-[hsl(var(--primary))]" : ""}`}><div className="mono text-[9px] font-semibold">{WEEKDAYS[i]}</div><div className="mono mt-1 text-sm">{d.count}</div><div className={`mono text-[9px] ${muted}`}>{d.planned} plan</div></div>)}</div><p className={`mt-2 text-[10px] ${muted}`}>Completed workouts per day, and clients planned.</p></div>
+    <details className={`group ${card} mb-4 overflow-hidden`} data-testid="weekly-activity-details">
+      <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span className="text-sm font-semibold">Weekly activity</span>
+        <span className={`flex items-center gap-2 text-right text-xs ${muted}`}><span>{week.sets} sets · {formatLoad(week.volume, unit)}</span><ChevronDown size={15} className="shrink-0 transition-transform group-open:rotate-180"/></span>
+      </summary>
+      <div className="border-t border-[hsl(var(--border))] p-3">
+        <p className={`mb-3 text-xs ${muted}`}>{clients.length ? `${week.activeClients} of ${clients.length} clients trained this week${week.goal > 0 ? ` · ${week.done}/${week.goal} goal days met` : ""}. Completed workouts only; drafts excluded.` : "Your first completed workout will appear here."}</p>
+        <div className="grid grid-cols-7 gap-1.5">{week.days.map((d, i) => <div key={d.date} className={`rounded-xl bg-[hsl(var(--muted))] py-2 text-center ${i + 1 === wd ? "ring-1 ring-[hsl(var(--primary))]" : ""}`}><div className="mono text-[9px] font-semibold">{WEEKDAYS[i]}</div><div className="mono mt-1 text-sm">{d.count}</div><div className={`mono text-[9px] ${muted}`}>{d.planned} plan</div></div>)}</div>
+        <p className={`mt-2 text-[10px] ${muted}`}>Completed workouts per day, and clients planned.</p>
+      </div>
+    </details>
 
-    <div className="mb-5 grid grid-cols-2 gap-2">
-      <button className={quiet} onClick={() => draft ? resume() : clients.length ? setDlg("start") : onAddClient()} data-testid="button-open-quick-start"><Zap size={16} />{draft ? "Resume workout" : clients.length ? "Start workout" : "Add first client"}</button>
+    <div className={`mb-5 grid ${clients.length ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2"} gap-2`}>
+      {clients.length > 0 && <button className={quiet} onClick={() => draft ? resume() : setDlg("start")} data-testid="button-open-quick-start"><Zap size={16} />{draft ? "Resume workout" : "Start workout"}</button>}
       <button className={quiet} onClick={() => setDlg("library")} data-testid="button-open-library"><Library size={16} />Exercises</button>
     </div>
 
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(310px,.8fr)]" data-testid="dashboard-columns">
       <div>
-        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="display-font text-xl font-semibold">Clients</h2><div className="flex min-w-0 gap-2"><input className={`${field} sm:w-48`} placeholder="Find a client" aria-label="Search clients" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="input-search-athletes" /><select className={`${field} w-auto`} aria-label="Filter clients by status" value={status} onChange={(e) => setStatus(e.target.value)} data-testid="select-athlete-status"><option value="all">All</option><option value="on-floor">Recent</option><option value="due">4–7 days</option><option value="overdue">8+ days</option><option value="new">No workouts</option></select></div></div>
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="display-font text-xl font-semibold">Clients</h2>{clients.length > 0 && <div className="flex min-w-0 gap-2"><input className={`${field} sm:w-48`} placeholder="Find a client" aria-label="Search clients" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="input-search-athletes" /><select className={`${field} w-auto`} aria-label="Filter clients by status" value={status} onChange={(e) => setStatus(e.target.value)} data-testid="select-athlete-status"><option value="all">All</option><option value="on-floor">Recent</option><option value="due">4–7 days</option><option value="overdue">8+ days</option><option value="new">No workouts</option></select></div>}</div>
         <div className="space-y-2">{list.map(({ client, summary }) => <div key={client.id} className={`${card} flex items-center gap-3 p-3`}>
           <Link href={`/clients/${client.id}`} className="flex min-w-0 flex-1 items-center gap-3" data-testid={`link-client-${client.id}`}>
             <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-sm font-bold text-[hsl(var(--primary))]">{initials(client.name)}</span>
@@ -132,7 +141,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
           <Link href={`/clients/${client.id}?tab=history`} aria-label={`Workout history for ${client.name}`} title="History" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl hover:bg-[hsl(var(--muted))]" data-testid={`link-history-${client.id}`}><History size={17} /></Link>
           <button onClick={() => start(client.id, client.weeklyPlan?.[String(wd)] ?? client.routines[0]?.id ?? null)} aria-label={draft ? "Resume current workout" : `Start session for ${client.name}`} title={draft ? "Resume current workout" : "Start session"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--secondary))]" data-testid={`button-start-session-${client.id}`}><Zap size={17} /></button>
         </div>)}
-        {!list.length && <div className={`${card} p-8 text-center`}><Users className={`mx-auto ${muted}`} size={24} /><h3 className="mt-3 font-semibold">{clients.length ? "No clients match." : "No clients yet."}</h3><p className={`mt-1 text-sm ${muted}`}>{clients.length ? "Adjust the search or status filter." : "Add your first client to begin."}</p>{!clients.length && <button className={`${primary} mt-4`} onClick={onAddClient}><Plus size={16} />Add client</button>}</div>}
+         {!list.length && <div className={`${card} p-6 text-center`}><Users className={`mx-auto ${muted}`} size={24} /><h3 className="mt-3 font-semibold">{clients.length ? "No clients match." : "No clients yet."}</h3><p className={`mt-1 text-sm ${muted}`}>{clients.length ? "Adjust the search or status filter." : "Use Add client above to create the first profile."}</p></div>}
         </div>
       </div>
       <section className={`${card} h-fit p-4`}><h2 className="display-font mb-3 text-xl font-semibold">Recent activity</h2>
