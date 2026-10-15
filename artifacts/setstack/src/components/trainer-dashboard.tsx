@@ -43,7 +43,7 @@ function Dialog({ title, onClose, children }: { title: string; onClose: () => vo
 }
 
 const STATUS: Record<string, string> = { "on-floor": "Trained recently", due: "4–7 days since training", overdue: "8+ days since training", new: "No workouts yet" };
-const TONE: Record<string, string> = { "on-floor": "text-[hsl(84_80%_70%)]", due: "text-[hsl(38_95%_70%)]", overdue: "text-[hsl(0_90%_75%)]", new: muted };
+const TONE: Record<string, string> = { "on-floor": "text-[var(--status-on-floor-foreground)]", due: "text-[hsl(38_95%_70%)]", overdue: "text-[hsl(0_90%_75%)]", new: muted };
 
 function initials(n: string) { const p = n.trim().split(/\s+/); return (p[0]?.[0] ?? "?") + (p[1]?.[0] ?? ""); }
 

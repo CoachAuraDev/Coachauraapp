@@ -150,6 +150,8 @@
   --muscle-map-unselected-stroke: #17171B;
   --status-on-floor-background: hsl(84 80% 62% / .14);
   --status-on-floor-foreground: hsl(84 80% 70%);
+  --status-recovered-background: hsl(84 80% 62% / .14);
+  --status-recovered-foreground: hsl(84 80% 72%);
 
   /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
 
@@ -254,6 +256,8 @@
   --muscle-map-unselected-stroke: #1B1C1F;
   --status-on-floor-background: hsl(var(--primary) / .16);
   --status-on-floor-foreground: hsl(var(--primary));
+  --status-recovered-background: hsl(var(--primary) / .16);
+  --status-recovered-foreground: hsl(var(--primary));
 }
 
 :root[data-appearance="orange-light-grey"] {
@@ -307,6 +311,118 @@
   --muscle-map-unselected-stroke: #FFFFFF;
   --status-on-floor-background: hsl(var(--primary) / .12);
   --status-on-floor-foreground: hsl(var(--primary));
+  --status-recovered-background: hsl(var(--primary) / .12);
+  --status-recovered-foreground: hsl(var(--primary));
+}
+
+:root[data-appearance="light-lime-charcoal"] {
+  color-scheme: dark;
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+  --background: 240 3% 9%;
+  --foreground: 240 5% 96%;
+  --border: 240 3% 24%;
+  --card: 240 3% 13%;
+  --card-foreground: 240 5% 96%;
+  --card-border: 240 3% 24%;
+  --sidebar: 240 3% 11%;
+  --sidebar-foreground: 240 5% 96%;
+  --sidebar-border: 240 3% 24%;
+  --sidebar-primary: 83 100% 67%;
+  --sidebar-primary-foreground: 240 5% 9%;
+  --sidebar-accent: 240 3% 18%;
+  --sidebar-accent-foreground: 240 5% 96%;
+  --sidebar-ring: 83 100% 67%;
+  --popover: 240 3% 15%;
+  --popover-foreground: 240 5% 96%;
+  --popover-border: 240 3% 24%;
+  --primary: 83 100% 67%;
+  --primary-foreground: 240 5% 9%;
+  --secondary: 240 3% 19%;
+  --secondary-foreground: 240 5% 96%;
+  --muted: 240 3% 18%;
+  --muted-foreground: 240 4% 70%;
+  --accent: 83 34% 20%;
+  --accent-foreground: 83 100% 74%;
+  --input: 240 3% 27%;
+  --ring: 83 100% 67%;
+  --chart-1: 83 100% 67%;
+  --chart-2: 86 74% 63%;
+  --chart-3: 75 57% 55%;
+  --chart-4: 102 43% 54%;
+  --chart-5: 54 62% 57%;
+  --muscle-map-surface: #202124;
+  --muscle-map-background: #151619;
+  --muscle-map-border: #3B3D40;
+  --muscle-map-text: #F5F6F2;
+  --muscle-map-muted: #A8AAA3;
+  --muscle-map-highlight: #C6FF57;
+  --muscle-map-selected: #2A2C2D;
+  --muscle-map-body: #2B2D2F;
+  --muscle-map-body-border: #484B4C;
+  --muscle-map-focus: #F4FFD9;
+  --muscle-map-unselected-stroke: #202124;
+  --status-on-floor-background: hsl(var(--primary) / .16);
+  --status-on-floor-foreground: hsl(var(--primary));
+  --status-recovered-background: hsl(var(--primary) / .16);
+  --status-recovered-foreground: hsl(var(--primary));
+}
+
+:root[data-appearance="light-lime-grey"] {
+  color-scheme: light;
+  --button-outline: rgba(22, 27, 16, 0.12);
+  --badge-outline: rgba(22, 27, 16, 0.08);
+  --elevate-1: rgba(22, 27, 16, 0.04);
+  --elevate-2: rgba(22, 27, 16, 0.08);
+  --background: 90 16% 96%;
+  --foreground: 240 5% 12%;
+  --border: 90 7% 82%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 5% 12%;
+  --card-border: 90 7% 83%;
+  --sidebar: 90 14% 93%;
+  --sidebar-foreground: 240 5% 14%;
+  --sidebar-border: 90 8% 81%;
+  --sidebar-primary: 86 68% 52%;
+  --sidebar-primary-foreground: 240 5% 9%;
+  --sidebar-accent: 88 30% 88%;
+  --sidebar-accent-foreground: 92 56% 24%;
+  --sidebar-ring: 86 68% 42%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 5% 12%;
+  --popover-border: 90 8% 81%;
+  --primary: 86 68% 52%;
+  --primary-foreground: 240 5% 9%;
+  --secondary: 90 10% 91%;
+  --secondary-foreground: 240 5% 18%;
+  --muted: 90 12% 92%;
+  --muted-foreground: 240 4% 39%;
+  --accent: 88 30% 89%;
+  --accent-foreground: 92 56% 24%;
+  --input: 90 8% 79%;
+  --ring: 86 68% 42%;
+  --chart-1: 90 76% 30%;
+  --chart-2: 83 72% 37%;
+  --chart-3: 99 54% 34%;
+  --chart-4: 72 65% 35%;
+  --chart-5: 108 43% 32%;
+  --muscle-map-surface: #FFFFFF;
+  --muscle-map-background: #F2F4EF;
+  --muscle-map-border: #D0D5CA;
+  --muscle-map-text: #20221D;
+  --muscle-map-muted: #62665C;
+  --muscle-map-highlight: #466B0C;
+  --muscle-map-selected: #E5EBDD;
+  --muscle-map-body: #DFE3D9;
+  --muscle-map-body-border: #B8C0AF;
+  --muscle-map-focus: #1F2716;
+  --muscle-map-unselected-stroke: #FFFFFF;
+  --status-on-floor-background: hsl(var(--primary) / .16);
+  --status-on-floor-foreground: hsl(92 68% 24%);
+  --status-recovered-background: hsl(var(--primary) / .14);
+  --status-recovered-foreground: hsl(92 68% 24%);
 }
 
 .dark {

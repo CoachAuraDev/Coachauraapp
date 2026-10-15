@@ -2,7 +2,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { coachAuraIntensityColor, COACHAURA_INTENSITY_SCALE, coachAuraWorkloadColor, COACHAURA_WORKLOAD_LEGEND } from "./muscle-intensity-colors.ts";
+import { coachAuraIntensityColor, COACHAURA_INTENSITY_SCALE, coachAuraWorkloadColor, COACHAURA_WORKLOAD_LEGEND, workloadLegendForAppearance } from "./muscle-intensity-colors.ts";
 import { analyzeMuscleActivity, intensityForWeeklyEquivalent } from "./muscle-activity.ts";
 import { heatLevel, originalMuscleAnalytics, recoveryColor } from "./original-muscle-analytics.ts";
 import { kExercises } from "./catalog.ts";
@@ -88,6 +88,18 @@ test("orange appearances only change the workload palette, not its values or thr
   assert.equal(intensityForWeeklyEquivalent(6), "high");
   assert.equal(intensityForWeeklyEquivalent(10), "very-high");
   assert.equal(coachAuraWorkloadColor(10, "default"), "#C6FF57");
+});
+
+test("light-lime appearances use lime workload colours without changing the thresholds", () => {
+  const dark = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "light-lime-charcoal"));
+  const light = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "light-lime-grey"));
+  assert.deepEqual(dark, ["#35353B", "#45521F", "#667F25", "#86B832", "#A5E635", "#C6FF57"]);
+  assert.deepEqual(light, ["#D5D9D1", "#E3EDCA", "#C9DE91", "#A9CF56", "#79A91C", "#466B0C"]);
+  assert.deepEqual(workloadLegendForAppearance("light-lime-grey").map((entry) => entry.label),
+    ["Inactive", "Very low", "Low", "Moderate", "High", "Very high"]);
+  assert.equal(intensityForWeeklyEquivalent(3), "moderate");
+  assert.equal(intensityForWeeklyEquivalent(6), "high");
+  assert.equal(intensityForWeeklyEquivalent(10), "very-high");
 });
 
 test("all six exact CoachAura colour anchors and unchanged source thresholds", () => {

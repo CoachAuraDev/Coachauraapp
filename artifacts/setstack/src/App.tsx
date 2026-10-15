@@ -27,6 +27,7 @@ import { FREE_CLIENT_LIMIT } from "@/lib/billing/entitlement";
 import { LifetimePaywall, useBillingSnapshot } from "@/components/lifetime-paywall";
 import { BrandLockup } from "@/components/brand-lockup";
 import PrivacyPolicyPage from "@/pages/privacy-policy";
+import { APPEARANCE_THEMES } from "@/lib/gymmane/appearance";
 
 const RoutineModal = lazy(() => import("@/components/workout/routine-editor").then((module) => ({ default: module.RoutineModal })));
 const SessionEditor = lazy(() => import("@/components/workout/session-editor").then((module) => ({ default: module.SessionEditor })));
@@ -178,7 +179,7 @@ function ClientPage() {
   const pool=exercisePool();
   const recordWeight=()=>{const value=Number(weight); if(value>0){addBodyweight(client.id,fromDisplay(value,unit));setWeight("");}};
   const removeClient=()=>ask({title:"Delete athlete?",message:`Delete ${client.name} and all of their sessions, routines and measurements? This cannot be undone.`,confirmLabel:"Delete athlete",onConfirm:()=>{deleteClient(client.id);setLocation("/");}});
-  const statusColor=summary.status==="overdue"?"text-[hsl(0_90%_75%)]":summary.status==="due"?"text-[hsl(38_95%_70%)]":"text-[hsl(84_80%_70%)]";
+  const statusColor=summary.status==="overdue"?"text-[hsl(0_90%_75%)]":summary.status==="due"?"text-[hsl(38_95%_70%)]":"text-[var(--status-on-floor-foreground)]";
   return <><div className="mb-4"><Link href="/" className="inline-flex items-center gap-2 text-xs font-semibold text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" data-testid="link-back-dashboard"><ArrowLeft size={14}/>All athletes</Link></div>
     <div className="mb-7 flex flex-col justify-between gap-4 lg:flex-row lg:items-end"><div className="flex min-w-0 items-center gap-4"><Avatar name={client.name} size="lg"/><div className="min-w-0 flex-1"><div className="mb-1 flex flex-wrap items-center gap-2"><p className="mono text-[10px] uppercase tracking-[.18em] text-[hsl(var(--muted-foreground))]">Athlete file · Since {shortDate(client.since)}</p>{client.id.startsWith("seed-")&&<span className="rounded-full bg-[hsl(38_90%_55%/.16)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[hsl(38_95%_70%)]">Demo profile</span>}</div><h1 className="display-font break-words text-[clamp(2rem,5vw,3rem)] font-semibold leading-none tracking-[-.05em]">{client.name}</h1><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[hsl(var(--muted-foreground))]"><span>{client.age} years</span><span>·</span><span>{client.heightCm} cm</span><span>·</span><span>{formatLoad(client.weightKg,unit)}</span><span>·</span><span className={statusColor}>{summary.status==="overdue"?"Check-in overdue":summary.status==="due"?"Check-in due":"Active athlete"}</span></div></div></div><div className="flex flex-wrap gap-2"><button className={quietBtn} onClick={()=>setEdit(true)} data-testid="button-edit-client"><UserRound size={15}/>Edit profile</button><button className={`${quietBtn} text-[hsl(var(--destructive))]`} onClick={removeClient} data-testid="button-delete-client"><Trash2 size={15}/><span className="hidden sm:inline">Delete</span></button><button className={primaryBtn} onClick={()=>startSession(client.id,client.weeklyPlan[String(isoWeekday(todayIso()))]??client.routines[0]?.id??null)} data-testid="button-client-start-session"><Zap size={16}/>Start session</button></div></div>
      <div role="group" aria-label={`${client.name} profile sections`} className="mb-5 grid min-w-0 grid-cols-2 gap-1 border-b border-[hsl(var(--border))] sm:flex sm:overflow-x-auto">{(["overview","history","records","muscles"] as const).map(key=><button key={key} type="button" aria-pressed={tab===key} onClick={()=>navigateTab(key)} className={`whitespace-nowrap border-b-2 px-4 py-3 text-sm font-semibold capitalize ${tab===key?"border-[hsl(var(--primary))] text-[hsl(var(--primary))]":"border-transparent text-[hsl(var(--muted-foreground))]"}`} data-testid={`tab-${key}`}>{key==="records"?"Personal records":key==="history"?"Workout history":key==="muscles"?"Muscle activity":"Overview"}</button>)}</div>
@@ -241,13 +242,30 @@ function SettingsPage() {
        <div className="space-y-5">
          <Card className="p-5 sm:p-6">
            <SectionTitle kicker="Display preferences" title="Appearance"/>
-           <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Keep the current dark CoachAura palette or choose an orange theme. Your choice is saved on this device.</p>
-           <label htmlFor="appearance-theme" className={labelClass}>Color theme</label>
-           <select id="appearance-theme" className={`${fieldClass} mt-2 max-w-md`} value={appearance} onChange={(event)=>setAppearance(event.target.value as typeof appearance)} aria-describedby="appearance-theme-help" data-testid="select-appearance">
-             <option value="default">CoachAura (current · dark)</option>
-             <option value="orange-charcoal">Orange &amp; Charcoal (dark)</option>
-             <option value="orange-light-grey">Orange &amp; Light Grey (light)</option>
-           </select>
+            <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose a palette for the workspace. Original keeps CoachAura's current colours. Your choice is saved on this device.</p>
+            <p id="appearance-theme-label" className={`${labelClass} mb-2`}>Color theme</p>
+            <div id="appearance-theme" role="group" aria-labelledby="appearance-theme-label" aria-describedby="appearance-theme-help" className="grid gap-2 sm:grid-cols-2" data-testid="select-appearance">
+              {APPEARANCE_THEMES.map((theme)=>(
+                <button
+                  key={theme.value}
+                  type="button"
+                  aria-pressed={appearance===theme.value}
+                  aria-label={`${theme.label}, ${theme.mode} theme`}
+                  onClick={()=>setAppearance(theme.value)}
+                  className={`flex min-h-16 items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] ${appearance===theme.value?"border-[hsl(var(--primary))] bg-[hsl(var(--accent))]":"border-[hsl(var(--border))] bg-[hsl(var(--background))] hover:bg-[hsl(var(--muted))]"}`}
+                  data-testid={`button-appearance-${theme.value}`}
+                >
+                  <span aria-hidden="true" className="flex shrink-0 gap-1">
+                    {theme.swatches.map((color,index)=><span key={index} className="h-5 w-5 rounded-full border border-black/10" style={{backgroundColor:color}}/>)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold leading-tight">{theme.label}</span>
+                    <span className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{theme.mode} palette</span>
+                  </span>
+                  {appearance===theme.value&&<Check aria-hidden="true" className="shrink-0 text-[hsl(var(--primary))]" size={17}/>}
+                </button>
+              ))}
+            </div>
          </Card>
          <Card className="p-5 sm:p-6"><SectionTitle kicker="Display preferences" title="Training units"/><p className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose how loads appear in the workspace. Stored values stay in kilograms so your training history remains consistent.</p><div className="flex max-w-sm gap-2 rounded-xl bg-[hsl(var(--muted))] p-1"><button onClick={()=>setUnit("kg")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="kg"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-kg">Kilograms · kg</button><button onClick={()=>setUnit("lb")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="lb"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-lb">Pounds · lb</button></div></Card>
         <Card className="p-5 sm:p-6"><SectionTitle kicker="Portable data" title="Backup & restore"/><p className="mb-5 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your workspace is saved only in {native?"this app's":"this browser's"} local storage. Export a JSON backup regularly; importing it replaces the current athletes on this device.{native&&" Browser and APK storage are separate: import your browser backup to transfer clients."}</p><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><ArrowDownToLine size={19}/></div><h3 className="mt-3 font-semibold">Export a backup</h3><p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">{native?"Save or share":"Download"} every athlete, routine and session as JSON.</p><button className={`${quietBtn} mt-4 w-full`} onClick={exportFile} disabled={exporting} data-testid="button-export-backup"><ArrowDownToLine size={15}/>{exporting?"Preparing…":native?"Save / share JSON":"Download JSON"}</button></div>
@@ -297,8 +315,9 @@ function WorkspaceApp() {
     const root=document.documentElement;
     if(appearance==="default")delete root.dataset.appearance;
     else root.dataset.appearance=appearance;
-    root.classList.toggle("dark",appearance!=="orange-light-grey");
-    const themeColor=appearance==="orange-light-grey"?"#F2F3F5":appearance==="orange-charcoal"?"#111214":"#0B0B0D";
+    const lightTheme=appearance==="orange-light-grey"||appearance==="light-lime-grey";
+    root.classList.toggle("dark",!lightTheme);
+    const themeColor=appearance==="orange-light-grey"?"#F2F3F5":appearance==="light-lime-grey"?"#F2F4EF":appearance==="orange-charcoal"?"#111214":appearance==="light-lime-charcoal"?"#151619":"#0B0B0D";
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content",themeColor);
   },[appearance,health.phase]);
   useEffect(()=>{void initializePlayBilling();},[]);

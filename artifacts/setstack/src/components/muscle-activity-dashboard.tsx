@@ -17,7 +17,7 @@ import type { Client } from "@/lib/gymmane/models";
 const panel = "rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] p-4 sm:p-5";
 const statusTone: Record<RecoveryStatus, string> = {
   "no-data": "bg-[hsl(240_5%_20%)] text-[hsl(240_5%_72%)]",
-  recovered: "bg-[hsl(84_80%_62%/.14)] text-[hsl(84_80%_72%)]",
+  recovered: "bg-[var(--status-recovered-background)] text-[var(--status-recovered-foreground)]",
   recovering: "bg-[hsl(205_90%_60%/.16)] text-[hsl(205_95%_78%)]",
   "recently-trained": "bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_72%)]",
   "high-recent-workload": "bg-[hsl(0_80%_60%/.16)] text-[hsl(0_90%_78%)]",

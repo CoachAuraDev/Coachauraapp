@@ -7,10 +7,13 @@ import { encodeBackup, inspectBackup, validateSavedFloor } from "./backup.ts";
 test("appearance options are validated and old saved records default to the unchanged CoachAura palette", () => {
   assert.equal(DEFAULT_APPEARANCE, "default");
   assert.deepEqual(APPEARANCE_THEMES.map((item) => item.value), [
-    "default", "orange-charcoal", "orange-light-grey",
+    "default", "orange-charcoal", "orange-light-grey", "light-lime-charcoal", "light-lime-grey",
   ]);
+  assert.ok(APPEARANCE_THEMES.every((item) => item.swatches.length === 3));
   assert.equal(isAppearanceTheme("orange-charcoal"), true);
   assert.equal(isAppearanceTheme("orange-light-grey"), true);
+  assert.equal(isAppearanceTheme("light-lime-charcoal"), true);
+  assert.equal(isAppearanceTheme("light-lime-grey"), true);
   assert.equal(isAppearanceTheme("unsupported"), false);
   const state = useFloor.getState();
   const oldShape = {
@@ -22,10 +25,12 @@ test("appearance options are validated and old saved records default to the unch
 
 test("selected appearance survives a local-store rehydration", async () => {
   const { setAppearance } = useFloor.getState();
-  setAppearance("orange-light-grey");
-  assert.equal(useFloor.getState().appearance, "orange-light-grey");
-  await useFloor.persist.rehydrate();
-  assert.equal(useFloor.getState().appearance, "orange-light-grey");
+  for (const appearance of ["orange-light-grey", "light-lime-charcoal", "light-lime-grey"] as const) {
+    setAppearance(appearance);
+    assert.equal(useFloor.getState().appearance, appearance);
+    await useFloor.persist.rehydrate();
+    assert.equal(useFloor.getState().appearance, appearance);
+  }
   useFloor.getState().setAppearance(DEFAULT_APPEARANCE);
 });
 
@@ -38,6 +43,10 @@ test("theme preferences roundtrip in new backups while older backups preserve th
   const roundtrip = inspectBackup(encodeBackup(orange), current);
   assert.equal(roundtrip.ok, true);
   if (roundtrip.ok) assert.equal(roundtrip.preview.data.appearance, "orange-charcoal");
+  const lime = { ...orange, appearance: "light-lime-charcoal" as const };
+  const limeRoundtrip = inspectBackup(encodeBackup(lime), current);
+  assert.equal(limeRoundtrip.ok, true);
+  if (limeRoundtrip.ok) assert.equal(limeRoundtrip.preview.data.appearance, "light-lime-charcoal");
 
   const older = JSON.parse(encodeBackup(orange)) as Record<string, unknown>;
   delete older.appearance;
