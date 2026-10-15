@@ -15,7 +15,7 @@ export function SessionEditor({ client, session, onClose }: { client: Client; se
   const setNotice = useFloor((s) => s.setNotice);
   const [name, setName] = useState(session.name);
   const [date, setDate] = useState(session.date);
-  const [expandedExerciseId, setExpandedExerciseId] = useState(session.exercises[0]?.id ?? null);
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(session.exercises[0]?.id ?? null);
   const [error, setError] = useState("");
   const [rows, setRows] = useState<Record<string, Row[]>>(() => Object.fromEntries(session.exercises.map((ex) => [ex.id, ex.sets.map((s) => {
     const r = { weight: wText(s.weight, unit), reps: String(s.reps), rir: rirText(s.rpe), kind: s.kind };
