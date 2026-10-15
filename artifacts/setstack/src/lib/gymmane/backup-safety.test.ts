@@ -6,9 +6,10 @@ import { durablePersist, getPersistenceHealth, PersistenceFailure } from "./dura
 import { useFloor } from "./store.ts";
 import { encodeBackup, inspectBackup, validateSavedFloor, type SavedFloor } from "./backup.ts";
 import { seedClients } from "./seed.ts";
+import { DEFAULT_APPEARANCE } from "./appearance.ts";
 
 function fixture(): SavedFloor {
-  return { clients: seedClients().map((c, i) => ({ ...c, name: `TEST Client ${i}` })), custom: [], templates: [], draft: null, unit: "kg" };
+  return { clients: seedClients().map((c, i) => ({ ...c, name: `TEST Client ${i}` })), custom: [], templates: [], draft: null, unit: "kg", appearance: DEFAULT_APPEARANCE };
 }
 function reject(data: unknown, pattern: RegExp) {
   const result = inspectBackup(JSON.stringify(data), fixture());
@@ -106,7 +107,7 @@ test("TEST incomplete or out-of-range pending input survives backup without beco
   reject(bad, /does not match/);
 });
 test("TEST empty workspace is a valid portable backup; previews never mutate input", () => {
-  const empty: SavedFloor = { clients: [], custom: [], templates: [], unit: "kg", draft: null };
+  const empty: SavedFloor = { clients: [], custom: [], templates: [], unit: "kg", draft: null, appearance: DEFAULT_APPEARANCE };
   assert.ok(inspectBackup(encodeBackup(empty), fixture()).ok);
   const data = fixture();
   const before = JSON.stringify(data);

@@ -13,15 +13,18 @@ import { uid, type SetKind, type Unit } from "./engine.ts";
 import { MUSCLE_GROUPS, type MuscleGroup } from "./muscle-activity.ts";
 import { hasBillingLifetimeAccess } from "../billing/access.ts";
 import { canCreateClient } from "../billing/entitlement.ts";
+import { DEFAULT_APPEARANCE, type AppearanceTheme } from "./appearance.ts";
 
 type FloorState = {
   clients: Client[];
   unit: Unit;
+  appearance: AppearanceTheme;
   draft: Draft | null;
   custom: CatalogExercise[];
   templates: Routine[];
   notice: string | null;
   setUnit: (unit: Unit) => void;
+  setAppearance: (appearance: AppearanceTheme) => void;
   setNotice: (notice: string | null) => void;
   addClient: (client: Client) => boolean;
   updateClient: (id: string, patch: Partial<Client>) => void;
@@ -86,11 +89,13 @@ export const useFloor = create<FloorState>()(
       // Demo data remains opt-in in Settings. Never substitute it for a failed read.
       clients: typeof window === "undefined" ? seedClients() : [],
       unit: "kg",
+      appearance: DEFAULT_APPEARANCE,
       draft: null,
       custom: [],
       templates: [],
       notice: null,
       setUnit: (unit) => set({ unit }),
+      setAppearance: (appearance) => set({ appearance }),
       setNotice: (notice) => set({ notice }),
       addClient: (client) => {
         const clients = get().clients;
@@ -408,8 +413,8 @@ export const useFloor = create<FloorState>()(
         return true;
       },
       exportBackup: () => {
-        const { clients, custom, templates, draft, unit } = get();
-        return encodeBackup({ clients, custom, templates, draft, unit });
+        const { clients, custom, templates, draft, unit, appearance } = get();
+        return encodeBackup({ clients, custom, templates, draft, unit, appearance });
       },
       previewBackup: (raw) => inspectBackup(raw, get()),
       importBackup: (raw) => {
@@ -450,6 +455,7 @@ export const useFloor = create<FloorState>()(
       partialize: (state) => ({
         clients: state.clients,
         unit: state.unit,
+        appearance: state.appearance,
         draft: state.draft,
         custom: state.custom,
         templates: state.templates,
