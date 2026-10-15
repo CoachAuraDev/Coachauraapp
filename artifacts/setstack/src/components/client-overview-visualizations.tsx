@@ -18,8 +18,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card } from "@/components/ui/card";
-import { MuscleMap } from "@/components/muscle-map";
-import { analyzeMuscleActivity, MUSCLE_GROUPS, type MuscleGroup } from "@/lib/gymmane/muscle-activity";
+import { analyzeMuscleActivity, MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
 import { muscleBalanceRadar, estimatedStrengthHistory, strengthExerciseOptions, weeklySetPoints } from "@/lib/gymmane/client-overview";
 import { formatLoad, todayIso, type Unit } from "@/lib/gymmane/engine";
 import type { CatalogExercise } from "@/lib/gymmane/catalog";
@@ -47,7 +46,6 @@ function shortDate(date: string): string {
 }
 
 export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: ClientOverviewVisualizationsProps) {
-  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | null>(null);
   const today = todayIso();
   const muscleActivity = useMemo(
     () => analyzeMuscleActivity(client, exerciseLibrary, 30, today),
@@ -74,7 +72,7 @@ export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: 
   const weeklyTotal = weeklyData.reduce((total, point) => total + point.sets, 0);
 
   return (
-    <section aria-label="Client overview visualizations" className="mt-5 space-y-5" data-testid="client-overview-visualizations">
+    <section aria-label="Client training analytics" className="space-y-5" data-testid="client-training-analytics">
       <div className="grid min-w-0 gap-5 xl:grid-cols-2">
         <Card className={cardClass} data-testid="card-client-muscle-balance">
           <div className="mb-3">
@@ -128,10 +126,6 @@ export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: 
               {muscleActivity.unmappedExercises.length} exercise{muscleActivity.unmappedExercises.length === 1 ? "" : "s"} could not be mapped to a muscle group.
             </p>
           )}
-          <div className="mt-4 border-t border-[hsl(var(--border))] pt-4">
-            <p className="mb-2 text-xs font-semibold">Activity map</p>
-            <MuscleMap muscles={muscleActivity.muscles} selectedMuscle={selectedMuscle} onSelect={setSelectedMuscle} />
-          </div>
         </Card>
 
         <div className="space-y-5">

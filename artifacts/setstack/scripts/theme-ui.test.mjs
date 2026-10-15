@@ -12,7 +12,7 @@ import { seedClients } from "../src/lib/gymmane/seed.ts";
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
 const clientId = "seed-amina";
-const appearances = ["default", "orange-charcoal", "orange-light-grey"];
+const appearances = ["default", "orange-charcoal", "orange-light-grey", "light-lime-charcoal", "light-lime-grey"];
 const themeSwatches = new Map();
 
 async function availablePort() {
@@ -157,7 +157,7 @@ async function assertAppearance(page, expected) {
       appearance: document.documentElement.dataset.appearance ?? "default",
       dark: document.documentElement.classList.contains("dark")
     })`),
-    (value) => value.appearance === expected && value.dark === (expected !== "orange-light-grey"),
+    (value) => value.appearance === expected && value.dark === !["orange-light-grey", "light-lime-grey"].includes(expected),
   );
   assert.equal(actual.appearance, expected);
 }
@@ -165,6 +165,11 @@ async function assertAppearance(page, expected) {
 async function exerciseProfileAndMap(page, baseUrl, index) {
   await navigate(page, `${baseUrl}/clients/${clientId}`, "button-client-start-session");
   assert.match(await page.evaluate("document.querySelector('h1')?.textContent"), /Amina Okonkwo/);
+  assert.equal(
+    await page.evaluate('!!document.querySelector("[data-testid=\\"client-training-analytics\\"]")'),
+    false,
+    "Analytics should not appear on the client Overview tab",
+  );
   const measurement = (68.2 + index / 10).toFixed(1);
   await page.fill("input-bodyweight", measurement);
   await page.click("button-add-bodyweight");
@@ -173,7 +178,26 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
     return client?.bodyweight.at(-1)?.kg;
   }, (weight) => weight === Number(measurement));
 
-  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "dashboard-muscle-activity");
+  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
+  const overviewCharts = await page.evaluate(`({
+    muscle: !!document.querySelector('[data-testid="card-client-muscle-balance"] svg.recharts-surface'),
+    weekly: !!document.querySelector('[data-testid="card-client-weekly-sets"] svg.recharts-surface'),
+    strength: !!document.querySelector('[data-testid="card-client-strength-trend"] svg.recharts-surface'),
+    themeChartColor: getComputedStyle(document.documentElement).getPropertyValue("--chart-1").trim(),
+    radarUsesThemeToken: document.querySelector('[data-testid="card-client-muscle-balance"] svg')?.innerHTML.includes("hsl(var(--chart-1))"),
+    viewportWidth: window.innerWidth,
+    pageWidth: document.documentElement.scrollWidth,
+    strengthOptions: document.querySelectorAll('[data-testid="select-client-strength-exercise"] option').length,
+    weeklyTotal: document.querySelector('[data-testid="card-client-weekly-sets"] [aria-label$="working sets this week"]')?.textContent
+  })`);
+  assert.ok(overviewCharts.muscle, "Muscle activity tab should render the actual-data muscle radar");
+  assert.ok(overviewCharts.weekly, "Muscle activity tab should render the current week set chart");
+  assert.ok(overviewCharts.strength, "Muscle activity tab should render the selected exercise strength chart");
+  assert.ok(overviewCharts.themeChartColor, "Chart palette tokens should be defined for every selected theme");
+  assert.ok(overviewCharts.radarUsesThemeToken, "The radar should use the selected chart palette token");
+  assert.ok(overviewCharts.pageWidth <= overviewCharts.viewportWidth, "The muscle activity tab should not overflow horizontally on a phone-width viewport");
+  assert.ok(overviewCharts.strengthOptions > 0, "The strength chart should offer exercises from this client's history");
+  assert.match(overviewCharts.weeklyTotal, /^\d+ sets$/);
   assert.ok(Number(await page.evaluate(
     'document.querySelector(\'[data-testid="text-muscle-working-sets"]\')?.textContent',
   )) > 0, "The profile chart should show completed working sets");
@@ -468,6 +492,12 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
     }
   });
   page = await openPage(debugPort);
+  await page.send("Emulation.setDeviceMetricsOverride", {
+    width: 402,
+    height: 874,
+    deviceScaleFactor: 1,
+    mobile: true,
+  });
 
   const initialClients = seedClients();
   const fixture = JSON.stringify({
@@ -502,7 +532,11 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
     }
   }
 
-  assert.equal(new Set(themeSwatches.values()).size, 3, "Each appearance should use its own muscle-map workload colour");
+  assert.equal(themeSwatches.size, appearances.length, "Each supported appearance should have been checked");
+  assert.equal(themeSwatches.get("default"), themeSwatches.get("light-lime-charcoal"), "The charcoal lime theme reuses CoachAura's existing dark muscle scale");
+  assert.notEqual(themeSwatches.get("orange-charcoal"), themeSwatches.get("default"));
+  assert.notEqual(themeSwatches.get("orange-light-grey"), themeSwatches.get("default"));
+  assert.notEqual(themeSwatches.get("light-lime-grey"), themeSwatches.get("default"));
   await page.click("button-finish-session");
   await waitFor("final workout completion", () => page.evaluate(
     'document.querySelector(\'[data-testid="panel-workout-logger"]\') === null',
@@ -513,4 +547,21 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
+  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    const client = data.state.clients.find((item) => item.id === "${clientId}");
+    client.sessions = [];
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  await page.send("Page.reload");
+  await waitFor("empty client overview", () => page.evaluate(
+    'document.querySelector(\'[data-testid="card-client-muscle-balance"]\')?.textContent.includes("No mapped workout activity yet")',
+  ));
+  const emptyOverview = await page.evaluate(`({
+    strength: document.querySelector('[data-testid="card-client-strength-trend"]')?.textContent.includes("No strength history yet"),
+    weeklyTotal: document.querySelector('[data-testid="card-client-weekly-sets"] [aria-label$="working sets this week"]')?.textContent
+  })`);
+  assert.equal(emptyOverview.strength, true, "The strength card should not invent a performance history");
+  assert.equal(emptyOverview.weeklyTotal, "0 sets", "The empty client should show zero recorded working sets");
 });
