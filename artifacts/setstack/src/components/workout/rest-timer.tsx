@@ -31,7 +31,7 @@ function beep() {
 }
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
-export function RestTimer({ defaultSeconds }: { defaultSeconds: number }) {
+export function RestTimer({ defaultSeconds, compact = false }: { defaultSeconds: number; compact?: boolean }) {
   const draft = useFloor((s) => s.draft);
   const configureRest = useFloor((s) => s.configureRest);
   const startRest = useFloor((s) => s.startRest);
@@ -82,9 +82,9 @@ export function RestTimer({ defaultSeconds }: { defaultSeconds: number }) {
     configureRest(n, sound, vib);
   };
   const state = done ? "Rest finished" : paused != null ? "Paused" : running ? "Resting" : "Rest timer";
-  return <div className={`mb-4 rounded-2xl border p-3 ${done ? "border-[hsl(var(--primary))] bg-[hsl(var(--accent))]" : "border-[hsl(var(--border))] bg-[hsl(var(--background))]"}`} data-testid="panel-rest-timer">
-    <div className="grid gap-3 sm:grid-cols-[100px_minmax(0,1fr)]">
-      <div className="min-w-0"><p className="mono text-[9px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]" data-testid="text-rest-state">{state}</p><p className="display-font whitespace-nowrap text-3xl font-semibold tabular-nums" role="timer" aria-live="off" data-testid="text-rest-remaining">{fmt(remaining)}</p></div>
+  return <div className={`${compact ? "mb-3 rounded-xl px-3 py-2" : "mb-4 rounded-2xl p-3"} border ${done ? "border-[hsl(var(--primary))] bg-[hsl(var(--accent))]" : "border-[hsl(var(--border))] bg-[hsl(var(--background))]"}`} data-testid="panel-rest-timer">
+    <div className={`${compact ? "flex items-center justify-between gap-2" : "grid gap-3 sm:grid-cols-[100px_minmax(0,1fr)]"}`}>
+      <div className="min-w-0"><p className="mono text-[9px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]" data-testid="text-rest-state">{state}</p><p className={`display-font whitespace-nowrap font-semibold tabular-nums ${compact ? "text-2xl leading-none" : "text-3xl"}`} role="timer" aria-live="off" data-testid="text-rest-remaining">{fmt(remaining)}</p></div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
       {running && !done ? <button className={`${quietBtn} px-3`} onClick={pauseRest} data-testid="button-rest-pause"><Pause size={15}/>Pause</button> : <button className={`${quietBtn} px-3`} onClick={startRest} data-testid="button-rest-start"><Play size={15}/>{paused != null ? "Resume" : "Start"}</button>}
       <button className={`${quietBtn} px-3`} onClick={resetRest} aria-label="Reset rest timer" data-testid="button-rest-reset"><RotateCcw size={15}/></button>

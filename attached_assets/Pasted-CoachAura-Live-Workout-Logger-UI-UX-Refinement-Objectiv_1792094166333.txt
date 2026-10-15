@@ -1,0 +1,176 @@
+CoachAura — Live Workout Logger UI/UX Refinement
+
+Objective
+
+Improve the existing live workout logging interface in CoachAura. The current logger feels clunky, displays too much information at once, and looks like a tab with the underlying app visible behind it.
+
+Make the experience clean, focused, intuitive and mobile-friendly, inspired by the simplicity of GymMane.
+
+This is a targeted refinement of the existing app, not a full redesign or rewrite.
+
+1. Protect the Existing App
+
+Before making changes:
+
+- Inspect the existing codebase and identify the components responsible for live workout logging.
+- Understand how workout sessions, exercises, sets, rest timers and data persistence currently work.
+- Preserve the existing architecture, navigation, database, storage, data models and business logic.
+- Keep the current colour palette, branding, typography and existing light/dark theme exactly as they are.
+- Do not introduce a new colour scheme or redesign unrelated screens.
+- Do not remove, replace or break existing functionality.
+- Avoid unnecessary dependencies or large structural changes.
+- Create a checkpoint or commit before modifying the code.
+
+2. Make the Workout Logger a Dedicated Full-Screen Experience
+
+The live workout logger must feel like a separate, dedicated training mode.
+
+- Remove the appearance of the underlying dashboard, client profile or previous screen being visible behind the logger.
+- Use a fully opaque background that matches CoachAura’s existing theme.
+- Do not display the logger as a transparent tab, partial-height sheet or see-through overlay.
+- Ensure the logger fills the available screen correctly on Android, including appropriate handling of system bars and screen insets.
+- Prevent the underlying screen from scrolling or receiving interactions while the workout logger is open.
+- Ensure the keyboard does not reveal the background app or cause the logger to become visually broken.
+- Use the safest implementation compatible with the current architecture. Do not replace the entire navigation system just to achieve this.
+- Provide a clear way to exit or finish the workout, with protection against accidentally losing an active session.
+
+3. Simplify the Interface
+
+The current interface displays too much information at once. Reduce clutter and establish a clear visual hierarchy.
+
+The main screen should prioritise:
+
+1. Current workout name.
+2. Overall workout progress.
+3. Current exercise.
+4. Current set and target.
+5. Weight and repetition entry.
+6. Set completion control.
+7. Rest timer.
+
+Keep secondary information, such as exercise notes, demonstrations, editing options and additional settings, accessible without displaying everything simultaneously.
+
+Use clear spacing, compact labels and appropriately sized controls. Avoid unnecessary cards, borders, duplicated headings and excessive information.
+
+4. Improve Set Logging
+
+Make recording a set as quick and intuitive as possible.
+
+Each set should clearly display:
+
+- Set number.
+- Target repetitions, where available.
+- Actual repetitions.
+- Weight used.
+- Completion status.
+
+Requirements:
+
+- Make weight and repetition inputs easy to tap and edit.
+- Use appropriate numeric keyboards on mobile.
+- Make completing a set a simple, obvious action.
+- Provide clear visual feedback when a set is completed, using the existing colour palette.
+- Keep previous sets visible in a compact format so the user can refer to them without cluttering the screen.
+- Allow previous entries to be corrected where supported by the existing functionality.
+- Preserve entered values when switching between exercises or opening secondary controls.
+- Prevent accidental data loss when the keyboard opens, the screen changes or an exercise is edited.
+
+Do not unnecessarily change how sets are calculated, stored or associated with a client.
+
+5. Improve Exercise Navigation
+
+Make moving through a workout feel smooth and predictable.
+
+- Clearly identify the current exercise.
+- Provide obvious controls to move to the next exercise and return to the previous one where supported.
+- Show workout progress without taking up excessive space.
+- Keep exercise switching fast and reliable.
+- Preserve existing exercise notes, demonstrations, history and other exercise-specific features.
+- Avoid presenting the entire workout as a large, cluttered list when the user is actively logging a set.
+- Keep the existing ability to modify or correct workout information wherever it currently exists.
+
+6. Preserve and Improve the Rest Timer
+
+The existing rest timer is an essential feature and must remain fully functional. Do not remove, disable, replace or break it.
+
+First, inspect the current timer implementation and preserve its existing behaviour.
+
+Requirements:
+
+- Preserve existing timer duration settings, start, pause, resume, reset and skip controls where available.
+- Preserve existing notifications, alerts and automatic-start behaviour.
+- If the current app automatically starts the timer after a set is completed, retain that behaviour.
+- Make the timer compact and easy to see without allowing it to dominate the screen.
+- Display the remaining time clearly and prominently.
+- Keep timer controls easy to access during a workout.
+- Ensure the timer continues counting accurately when the user switches exercises or edits set values.
+- Prevent the keyboard from covering the timer or making its controls inaccessible.
+- Preserve timer state when navigating between exercises within the active workout.
+- Do not accidentally reset the timer when another set is logged.
+- Handle pausing, resuming, resetting and skipping consistently with the existing implementation.
+- Avoid introducing new timer behaviour that conflicts with existing logic.
+
+The timer should fit naturally into the streamlined logger, ideally in a compact, consistently positioned area that is easy to reach on a phone.
+
+7. Mobile-First Design
+
+CoachAura is primarily an Android app. Optimise the logger for real-world use in the gym.
+
+- Design for a narrow mobile screen first.
+- Make controls comfortable to tap with one hand.
+- Ensure the layout works with the Android keyboard open.
+- Avoid horizontal scrolling and unnecessary vertical scrolling.
+- Keep the current set and its controls accessible without excessive scrolling.
+- Handle different screen sizes and system insets correctly.
+- Ensure buttons, inputs and text remain readable in the existing light and dark themes.
+- Avoid animations that slow down logging or interfere with controls.
+
+8. Preserve All Existing Functionality and Data
+
+The redesign must not affect:
+
+- Client profiles and client information.
+- Existing workout plans.
+- Exercise library and exercise selection.
+- Set, repetition and weight tracking.
+- Workout history.
+- Training progress and statistics.
+- Muscle recovery maps and related visualisations.
+- Rest timer logic and settings.
+- Workout completion and saving.
+- Local data persistence and existing stored records.
+- Existing settings and theme preferences.
+
+Do not clear, migrate, reset or overwrite user data unnecessarily.
+
+Do not replace working functionality with mock data, placeholders or simplified versions.
+
+9. Implementation and Testing
+
+Make the changes incrementally and inspect the existing implementation before editing.
+
+After making changes, verify that:
+
+- The logger opens as a fully opaque, dedicated full-screen experience.
+- No underlying app content is visible around or through the logger.
+- The interface is noticeably less cluttered.
+- Weight and repetition inputs work correctly.
+- Sets can be completed and corrected.
+- Exercise navigation works without losing entries.
+- The rest timer starts and operates according to its existing behaviour.
+- Timer controls work and its countdown remains accurate.
+- The keyboard does not obscure essential controls or expose the underlying screen.
+- Workouts save correctly and remain available in workout history.
+- Existing client data and workout plans remain intact.
+- The current colour palette and light/dark themes are unchanged.
+- Other screens and features continue working as before.
+
+Fix any regressions introduced by these changes before considering the task complete.
+
+Final Acceptance Criteria
+
+The finished logger should feel like a clean, dedicated training mode rather than another app tab.
+
+It should be easy to identify the current exercise, enter repetitions and weight, complete a set, monitor rest time and move to the next exercise without being overwhelmed by information.
+
+Prioritise simplicity, speed, readability and reliability. Preserve CoachAura’s existing colours, architecture, data and working features. Do not redesign the entire app.
