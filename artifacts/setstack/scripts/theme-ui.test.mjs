@@ -8,6 +8,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
+import { toDisplay } from "../src/lib/gymmane/engine.ts";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
@@ -144,6 +145,17 @@ async function navigate(page, url, selector) {
   ));
 }
 
+async function reloadAndWait(page, description, selector) {
+  const marker = `__coachaura_reloaded_${Date.now()}`;
+  await page.send("Page.addScriptToEvaluateOnNewDocument", {
+    source: `window[${JSON.stringify(marker)}] = true;`,
+  });
+  await page.send("Page.reload", { ignoreCache: true });
+  await waitFor(description, () => page.evaluate(
+    `window[${JSON.stringify(marker)}] === true && document.querySelector('[data-testid="${selector}"]') !== null`,
+  ));
+}
+
 async function storedState(page) {
   const raw = await page.evaluate('localStorage.getItem("setstack-v1")');
   assert.ok(raw, "CoachAura storage should be present");
@@ -248,6 +260,49 @@ async function muscleChartSnapshot(page, baseUrl, clientId) {
       weeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent
     }
   })`);
+}
+
+async function switchWorkoutUnitAndReload(page, baseUrl, unit) {
+  await navigate(page, `${baseUrl}/settings`, `button-unit-${unit}`);
+  await page.click(`button-unit-${unit}`);
+  await waitFor(`saved ${unit} display unit`, async () => (await storedState(page)).unit, (value) => value === unit);
+
+  await navigate(page, `${baseUrl}/clients/${clientId}`, "panel-workout-logger");
+  await waitFor("resumed workout logger", () => page.evaluate(
+    'document.querySelector(\'[data-testid="panel-workout-logger"]\') !== null',
+  ));
+  const expectedWeightText = unit === "kg"
+    ? "60.625"
+    : String(Number(toDisplay(60.625, unit).toFixed(2)));
+  const exerciseId = (await storedState(page)).draft.exercises[0].id;
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-set-weight"]\')?.value',
+  ), expectedWeightText, `Pending load should display correctly in ${unit}`);
+  assert.equal((await storedState(page)).draft.entries[exerciseId]?.weightKg, 60.625);
+
+  await page.fill("input-set-reps", "6");
+  assert.equal((await storedState(page)).draft.entries[exerciseId]?.weightKg, 60.625,
+    "Changing only reps must preserve the canonical pending load");
+  await page.fill("input-set-rir", "0");
+  assert.equal((await storedState(page)).draft.entries[exerciseId]?.weightKg, 60.625,
+    "Changing only RIR must preserve the canonical pending load");
+
+  await reloadAndWait(page, "reloaded workout logger", "panel-workout-logger");
+  const reloaded = await storedState(page);
+  assert.equal(reloaded.unit, unit);
+  assert.equal(reloaded.draft.exercises[0]?.sets[0]?.weight, 52.5,
+    "The previously logged load must remain exact after changing units and reloading");
+  assert.equal(reloaded.draft.entries[exerciseId]?.weightKg, 60.625,
+    "The pending canonical load must remain exact after changing units and reloading");
+  assert.equal(reloaded.draft.entries[exerciseId]?.reps, 6);
+  assert.equal(reloaded.draft.entries[exerciseId]?.rir, 0);
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-set-weight"]\')?.value',
+  ), expectedWeightText);
+  const expectedLoggedLoad = `${String(Number(toDisplay(52.5, unit).toFixed(1)))} ${unit}`;
+  assert.ok(await page.evaluate(
+    `document.querySelector('[data-testid="list-current-sets"]')?.textContent.includes(${JSON.stringify(expectedLoggedLoad)})`,
+  ), "The logged set should remain visible in the selected unit after reloading");
 }
 
 async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
@@ -379,11 +434,21 @@ async function exerciseWorkout(page, baseUrl) {
     'document.querySelector(\'[data-testid="text-rest-state"]\')?.textContent',
   ), (value) => value === "Paused");
 
-  await page.fill("input-set-weight", "60.25");
+  await page.fill("input-set-weight", "60.625");
   await page.fill("input-set-reps", "5");
   await page.fill("input-set-rir", "1");
   await page.click("button-minimize-session");
   await waitFor("minimized workout", () => page.evaluate(
+    'document.querySelector(\'[data-testid="button-resume-session"]\') !== null',
+  ));
+  await switchWorkoutUnitAndReload(page, baseUrl, "lb");
+  await page.click("button-minimize-session");
+  await waitFor("minimized workout after pounds check", () => page.evaluate(
+    'document.querySelector(\'[data-testid="button-resume-session"]\') !== null',
+  ));
+  await switchWorkoutUnitAndReload(page, baseUrl, "kg");
+  await page.click("button-minimize-session");
+  await waitFor("minimized workout after kilograms check", () => page.evaluate(
     'document.querySelector(\'[data-testid="button-resume-session"]\') !== null',
   ));
   return await storedState(page);
@@ -404,11 +469,11 @@ async function changeThemeAndReload(page, baseUrl, nextAppearance, savedClients)
   assert.equal(active?.exercises[0]?.sets[0]?.reps, 7);
   assert.equal(active?.exercises[0]?.sets[0]?.rpe, 8);
   assert.deepEqual(active?.entries?.[active.exercises[active.activeIndex]?.id], {
-    weightKg: 60.25,
-    reps: 5,
-    rir: 1,
+    weightKg: 60.625,
+    reps: 6,
+    rir: 0,
     kind: "normal",
-    inputs: { weight: "60.25", reps: "5", rir: "1", unit: "kg" },
+    inputs: { weight: "60.625", reps: "6", rir: "0", unit: "kg" },
   });
   await waitFor("rest timer restored after reload", () => page.evaluate(
     'document.querySelector(\'[data-testid="text-rest-state"]\')?.textContent',

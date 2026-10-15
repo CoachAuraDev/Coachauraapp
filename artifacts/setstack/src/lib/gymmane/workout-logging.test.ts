@@ -121,6 +121,59 @@ test("draft guard preserves logged and pending sets; restart restores entries, t
   } finally { useFloor.persist.setOptions({ storage: priorStorage }); }
 });
 
+test("logged and pending loads stay exact across unit changes and draft rehydration", async () => {
+  const s = reset();
+  s.startSession("A", null);
+  s.addDraftExercise(bench);
+  s.logSet({ id: "unit-logged", weight: 60.625, reps: 8, rpe: 8, kind: "normal" });
+  s.setDraftEntry(bench.id, {
+    weightKg: 60.625,
+    reps: 5,
+    rir: 1,
+    kind: "normal",
+    inputs: { weight: "60.625", reps: "5", rir: "1", unit: "kg" },
+  });
+
+  s.setUnit("lb");
+  const pending = useFloor.getState().draft!.entries![bench.id]!;
+  assert.equal(useFloor.getState().draft!.exercises[0]!.sets[0]!.weight, 60.625);
+  assert.equal(pending.weightKg, 60.625);
+  s.setDraftEntry(bench.id, {
+    ...pending,
+    reps: 6,
+    inputs: { ...pending.inputs!, reps: "6" },
+  });
+  const afterReps = useFloor.getState().draft!.entries![bench.id]!;
+  assert.equal(afterReps.weightKg, 60.625, "Changing reps must not reconvert the pending load");
+  s.setDraftEntry(bench.id, {
+    ...afterReps,
+    rir: 0,
+    inputs: { ...afterReps.inputs!, rir: "0" },
+  });
+  const afterRir = useFloor.getState().draft!.entries![bench.id]!;
+  assert.equal(afterRir.weightKg, 60.625, "Changing RIR must not reconvert the pending load");
+  assert.equal(afterRir.inputs?.unit, "kg", "The saved input text keeps the unit it was entered in");
+
+  const persisted = useFloor.persist.getOptions().partialize!(useFloor.getState());
+  const priorStorage = useFloor.persist.getOptions().storage;
+  let saved = { state: structuredClone(persisted), version: 0 };
+  useFloor.setState({ clients: [], draft: null, templates: [] });
+  useFloor.persist.setOptions({ storage: {
+    getItem: () => saved,
+    setItem: (_, value) => { saved = structuredClone(value) as typeof saved; },
+    removeItem: () => {},
+  } });
+  try {
+    await useFloor.persist.rehydrate();
+    const restored = useFloor.getState();
+    assert.equal(restored.unit, "lb");
+    assert.equal(restored.draft!.exercises[0]!.sets[0]!.weight, 60.625);
+    assert.equal(restored.draft!.entries![bench.id]!.weightKg, 60.625);
+    assert.equal(restored.draft!.entries![bench.id]!.reps, 6);
+    assert.equal(restored.draft!.entries![bench.id]!.rir, 0);
+  } finally { useFloor.persist.setOptions({ storage: priorStorage }); }
+});
+
 test("copied values log into a new workout, draft edit validates, finish preserves previous results", () => {
   const old = session("old", "2025-02-02", [entry("old", 50, 8)]);
   const s = reset([client("A", [old]), client("B")]);

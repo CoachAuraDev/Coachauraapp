@@ -9,25 +9,43 @@ import type { DraftEntry, SetLog } from "@/lib/gymmane/models";
 import { RestTimer } from "./rest-timer";
 import { fieldClass, labelClass, primaryBtn, quietBtn, rirText, type AskConfirm } from "./shared";
 
-type Fields = { kg?: number | null; weight: string; reps: string; rir: string; kind: "normal" | "warmup" };
+type Fields = {
+  kg?: number | null;
+  weight: string;
+  reps: string;
+  rir: string;
+  kind: "normal" | "warmup";
+  inputWeight?: string;
+  inputUnit?: "kg" | "lb";
+};
 const dispWeight = (kg: number | null, unit: "kg" | "lb") => (kg == null ? "" : String(Number(toDisplay(kg, unit).toFixed(2))));
-const entryToFields = (e: DraftEntry, unit: "kg" | "lb"): Fields => ({
-  kg: e.weightKg,
-  weight: e.inputs?.unit === unit ? e.inputs.weight : dispWeight(e.weightKg, unit),
-  reps: e.inputs?.reps ?? (e.reps == null ? "" : String(e.reps)),
-  rir: e.inputs?.rir ?? (e.rir == null ? "" : String(e.rir)), kind: e.kind,
-});
+const entryToFields = (e: DraftEntry, unit: "kg" | "lb"): Fields => {
+  const inputWeight = e.inputs?.weight ?? dispWeight(e.weightKg, unit);
+  const inputUnit = e.inputs?.unit ?? unit;
+  return {
+    kg: e.weightKg,
+    weight: inputUnit === unit ? inputWeight : dispWeight(e.weightKg, unit),
+    reps: e.inputs?.reps ?? (e.reps == null ? "" : String(e.reps)),
+    rir: e.inputs?.rir ?? (e.rir == null ? "" : String(e.rir)),
+    kind: e.kind,
+    inputWeight,
+    inputUnit,
+  };
+};
 const pendingNumber = (value: string) => value.trim() === "" || !Number.isFinite(Number(value)) ? null : Number(value);
 const fieldsToEntry = (f: Fields, unit: "kg" | "lb"): DraftEntry => {
   const kg = f.kg !== undefined ? f.kg : pendingNumber(f.weight) == null ? null : fromDisplay(Number(f.weight), unit);
   const reps = pendingNumber(f.reps), rir = pendingNumber(f.rir);
+  const weightInput = f.kg !== undefined
+    ? { weight: f.inputWeight ?? f.weight, unit: f.inputUnit ?? unit }
+    : { weight: f.weight, unit };
   return {
     weightKg: kg != null && Number.isFinite(kg) && kg >= 0 ? kg : null,
     reps: reps != null && Number.isInteger(reps) && reps >= 0 && reps <= 100 ? reps : null,
     rir: rir != null && rir >= 0 && rir <= 10 ? rir : null,
     kind: f.kind,
     // Invalid or incomplete input is retained as text, never as training data.
-    inputs: { weight: f.weight, reps: f.reps, rir: f.rir, unit },
+    inputs: { ...weightInput, reps: f.reps, rir: f.rir },
   };
 };
 
@@ -158,7 +176,8 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   const copyIndex = f.kind === "warmup" ? prevWork.length - 1 : Math.min(workCount, prevWork.length - 1);
   const copySet = (s: SetLog | undefined) => {
     if (!s) return;
-    update({ kg: s.weight, weight: dispWeight(s.weight, unit), reps: String(s.reps), rir: rirText(s.rpe) });
+    const weight = dispWeight(s.weight, unit);
+    update({ kg: s.weight, weight, reps: String(s.reps), rir: rirText(s.rpe), inputWeight: weight, inputUnit: unit });
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();

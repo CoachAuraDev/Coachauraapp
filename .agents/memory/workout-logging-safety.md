@@ -14,6 +14,10 @@ or overwriting workout history.
 values. In particular, editing only reps or RIR must not round/reconvert an
 unchanged historical load through display units. Assign reusable templates as
 independent copies, preserving per-client actual results and existing analytics.
+When a user changes display units, keep the original typed load text and its
+unit alongside the canonical kg value; edits to reps or RIR must not replace
+that source input with a rounded conversion. Replace it only when the load
+itself is edited.
 
 Rest countdowns can survive reloads, but foreground browser alerts must not be
 advertised as guaranteed background Android notifications.
