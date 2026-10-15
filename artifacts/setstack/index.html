@@ -1,11 +1,35 @@
 <!DOCTYPE html>
-<html lang="en" class="dark" style="background:#0B0B0D;color-scheme:dark">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#0B0B0D" />
-    <!-- First paint stays dark before the app stylesheet or JavaScript loads. -->
-    <style>html,body,#root{background:#0B0B0D;color:#F5F5F7}body{margin:0}#root{min-height:100dvh}</style>
+    <script>
+      try {
+        const saved = JSON.parse(localStorage.getItem("setstack-v1") || "null");
+        const appearance = saved?.state?.appearance;
+        if (appearance === "orange-charcoal" || appearance === "orange-light-grey") {
+          const root = document.documentElement;
+          root.dataset.appearance = appearance;
+          root.classList.toggle("dark", appearance !== "orange-light-grey");
+          document.querySelector('meta[name="theme-color"]')?.setAttribute(
+            "content",
+            appearance === "orange-light-grey" ? "#F2F3F5" : "#111214",
+          );
+        }
+      } catch {
+        // The app will validate saved data and present its recovery screen if storage is unreadable.
+      }
+    </script>
+    <!-- Keep first paint dark by default; apply a saved optional palette before the app loads. -->
+    <style>
+      html{color-scheme:dark}
+      html,body,#root{background:#0B0B0D;color:#F5F5F7}
+      html[data-appearance="orange-charcoal"],html[data-appearance="orange-charcoal"] body,html[data-appearance="orange-charcoal"] #root{background:#111214;color:#F4F4F5}
+      html[data-appearance="orange-light-grey"],html[data-appearance="orange-light-grey"] body,html[data-appearance="orange-light-grey"] #root{background:#F2F3F5;color:#1D1D20}
+      html[data-appearance="orange-light-grey"]{color-scheme:light}
+      body{margin:0}#root{min-height:100dvh}
+    </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>CoachAura</title>
     <meta name="application-name" content="CoachAura" />

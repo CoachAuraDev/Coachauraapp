@@ -137,6 +137,19 @@
   --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+  --muscle-map-surface: #17171B;
+  --muscle-map-background: #0B0B0D;
+  --muscle-map-border: #303036;
+  --muscle-map-text: #F5F5F7;
+  --muscle-map-muted: #A1A1AA;
+  --muscle-map-highlight: #B7F34A;
+  --muscle-map-selected: #222228;
+  --muscle-map-body: #2a2a31;
+  --muscle-map-body-border: #3a3a42;
+  --muscle-map-focus: #ffffff;
+  --muscle-map-unselected-stroke: #17171B;
+  --status-on-floor-background: hsl(84 80% 62% / .14);
+  --status-on-floor-foreground: hsl(84 80% 70%);
 
   /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
 
@@ -188,6 +201,112 @@
     from hsl(var(--destructive)) h s
       calc(l + var(--opaque-button-border-intensity)) / alpha
   );
+}
+
+:root[data-appearance="orange-charcoal"] {
+  color-scheme: dark;
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+  --background: 240 4% 7%;
+  --foreground: 240 5% 96%;
+  --border: 240 4% 22%;
+  --card: 240 4% 11%;
+  --card-foreground: 240 5% 96%;
+  --card-border: 240 4% 22%;
+  --sidebar: 240 4% 10%;
+  --sidebar-foreground: 240 5% 96%;
+  --sidebar-border: 240 4% 22%;
+  --sidebar-primary: 28 94% 55%;
+  --sidebar-primary-foreground: 240 4% 8%;
+  --sidebar-accent: 240 4% 16%;
+  --sidebar-accent-foreground: 240 5% 96%;
+  --sidebar-ring: 28 94% 55%;
+  --popover: 240 4% 14%;
+  --popover-foreground: 240 5% 96%;
+  --popover-border: 240 4% 22%;
+  --primary: 28 94% 55%;
+  --primary-foreground: 240 4% 8%;
+  --secondary: 240 4% 17%;
+  --secondary-foreground: 240 5% 96%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 4% 67%;
+  --accent: 28 36% 18%;
+  --accent-foreground: 28 94% 68%;
+  --input: 240 4% 23%;
+  --ring: 28 94% 55%;
+  --chart-1: 28 94% 55%;
+  --chart-2: 29 75% 68%;
+  --chart-3: 22 80% 51%;
+  --chart-4: 36 79% 59%;
+  --chart-5: 42 60% 72%;
+  --muscle-map-surface: #1B1C1F;
+  --muscle-map-background: #111214;
+  --muscle-map-border: #38393E;
+  --muscle-map-text: #F4F4F5;
+  --muscle-map-muted: #A3A4AA;
+  --muscle-map-highlight: #F58C2D;
+  --muscle-map-selected: #292A2E;
+  --muscle-map-body: #2A2B30;
+  --muscle-map-body-border: #45464D;
+  --muscle-map-focus: #FFF1E3;
+  --muscle-map-unselected-stroke: #1B1C1F;
+  --status-on-floor-background: hsl(var(--primary) / .16);
+  --status-on-floor-foreground: hsl(var(--primary));
+}
+
+:root[data-appearance="orange-light-grey"] {
+  color-scheme: light;
+  --button-outline: rgba(25, 25, 30, 0.12);
+  --badge-outline: rgba(25, 25, 30, 0.08);
+  --elevate-1: rgba(25, 25, 30, 0.04);
+  --elevate-2: rgba(25, 25, 30, 0.08);
+  --background: 240 7% 96%;
+  --foreground: 240 5% 12%;
+  --border: 240 5% 83%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 5% 12%;
+  --card-border: 240 5% 84%;
+  --sidebar: 240 7% 93%;
+  --sidebar-foreground: 240 5% 14%;
+  --sidebar-border: 240 5% 82%;
+  --sidebar-primary: 22 95% 38%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 24 75% 89%;
+  --sidebar-accent-foreground: 22 88% 28%;
+  --sidebar-ring: 22 95% 38%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 5% 12%;
+  --popover-border: 240 5% 82%;
+  --primary: 22 95% 38%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 5% 91%;
+  --secondary-foreground: 240 5% 18%;
+  --muted: 240 6% 92%;
+  --muted-foreground: 240 4% 39%;
+  --accent: 24 75% 91%;
+  --accent-foreground: 22 88% 28%;
+  --input: 240 5% 79%;
+  --ring: 22 95% 38%;
+  --chart-1: 22 95% 38%;
+  --chart-2: 28 84% 47%;
+  --chart-3: 18 82% 55%;
+  --chart-4: 34 74% 43%;
+  --chart-5: 25 25% 55%;
+  --muscle-map-surface: #FFFFFF;
+  --muscle-map-background: #F2F3F5;
+  --muscle-map-border: #D3D4D9;
+  --muscle-map-text: #1D1D20;
+  --muscle-map-muted: #64646C;
+  --muscle-map-highlight: #C65208;
+  --muscle-map-selected: #E9E9ED;
+  --muscle-map-body: #DFE0E5;
+  --muscle-map-body-border: #B9BBC3;
+  --muscle-map-focus: #222228;
+  --muscle-map-unselected-stroke: #FFFFFF;
+  --status-on-floor-background: hsl(var(--primary) / .12);
+  --status-on-floor-foreground: hsl(var(--primary));
 }
 
 .dark {

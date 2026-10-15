@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Switch, useLocation, useParams, useSearch } from "wouter";
 import {
   Activity, ArrowDownToLine, ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check,
@@ -43,7 +43,7 @@ function Avatar({ name, size = "md" }: { name: string; size?: "sm" | "md" | "lg"
   return <div aria-hidden="true" className={`${dims} flex shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--accent))] font-bold text-[hsl(var(--primary))]`}>{(parts[0]?.[0] ?? "?") + (parts[1]?.[0] ?? "")}</div>;
 }
 function StatusPill({ status }: { status: string }) {
-  const tone = status === "on-floor" ? "bg-[hsl(84_80%_62%/.14)] text-[hsl(84_80%_70%)]" : status === "due" ? "bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_70%)]" : status === "overdue" ? "bg-[hsl(0_80%_60%/.16)] text-[hsl(0_90%_75%)]" : "bg-[hsl(240_5%_20%)] text-[hsl(240_5%_66%)]";
+  const tone = status === "on-floor" ? "bg-[var(--status-on-floor-background)] text-[var(--status-on-floor-foreground)]" : status === "due" ? "bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_70%)]" : status === "overdue" ? "bg-[hsl(0_80%_60%/.16)] text-[hsl(0_90%_75%)]" : "bg-[hsl(240_5%_20%)] text-[hsl(240_5%_66%)]";
   const words: Record<string, string> = { "on-floor": "On track", due: "Due soon", overdue: "Needs a check-in", new: "New athlete" };
   return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${tone}`}>{words[status] ?? status}</span>;
 }
@@ -212,6 +212,8 @@ function SettingsPage() {
   const [ask,confirmNode]=useConfirm();
   const unit=useFloor(s=>s.unit);
   const setUnit=useFloor(s=>s.setUnit);
+  const appearance=useFloor(s=>s.appearance);
+  const setAppearance=useFloor(s=>s.setAppearance);
   const exportBackup=useFloor(s=>s.exportBackup);
   const resetDemo=useFloor(s=>s.resetDemo);
   const [status,setStatus]=useState("");
@@ -235,8 +237,19 @@ function SettingsPage() {
   const readFile=(file?:File)=>{if(!file)return;if(file.size>MAX_BACKUP_BYTES){setStatus("Backup exceeds the 20 MB safety limit.");return;}const reader=new FileReader();reader.onload=()=>{const raw=String(reader.result??"");const result=useFloor.getState().previewBackup(raw);if(!result.ok){setStatus(result.error);return;}setRestoreText(raw);setConfirmRestore(true)};reader.onerror=()=>setStatus("Could not read that file. Try another JSON backup.");reader.readAsText(file);};
   const reset=()=>ask({title:"Reset demo data?",message:"Reset all local data to the original demo floor? This replaces your current athletes and sessions.",confirmLabel:"Reset data",onConfirm:()=>{resetDemo();setStatus("Demo data restored.");}});
   return <>{confirmNode}<Header eyebrow="Workspace preferences" title="Keep your data close." subtitle="Set your working units and make a portable copy of the training floor."/>
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
-      <div className="space-y-5"><Card className="p-5 sm:p-6"><SectionTitle kicker="Display preferences" title="Training units"/><p className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose how loads appear in the workspace. Stored values stay in kilograms so your training history remains consistent.</p><div className="flex max-w-sm gap-2 rounded-xl bg-[hsl(var(--muted))] p-1"><button onClick={()=>setUnit("kg")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="kg"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-kg">Kilograms · kg</button><button onClick={()=>setUnit("lb")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="lb"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-lb">Pounds · lb</button></div></Card>
+     <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(300px,.8fr)]">
+       <div className="space-y-5">
+         <Card className="p-5 sm:p-6">
+           <SectionTitle kicker="Display preferences" title="Appearance"/>
+           <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Keep the current dark CoachAura palette or choose an orange theme. Your choice is saved on this device.</p>
+           <label htmlFor="appearance-theme" className={labelClass}>Color theme</label>
+           <select id="appearance-theme" className={`${fieldClass} mt-2 max-w-md`} value={appearance} onChange={(event)=>setAppearance(event.target.value as typeof appearance)} aria-describedby="appearance-theme-help" data-testid="select-appearance">
+             <option value="default">CoachAura (current · dark)</option>
+             <option value="orange-charcoal">Orange &amp; Charcoal (dark)</option>
+             <option value="orange-light-grey">Orange &amp; Light Grey (light)</option>
+           </select>
+         </Card>
+         <Card className="p-5 sm:p-6"><SectionTitle kicker="Display preferences" title="Training units"/><p className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose how loads appear in the workspace. Stored values stay in kilograms so your training history remains consistent.</p><div className="flex max-w-sm gap-2 rounded-xl bg-[hsl(var(--muted))] p-1"><button onClick={()=>setUnit("kg")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="kg"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-kg">Kilograms · kg</button><button onClick={()=>setUnit("lb")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="lb"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-lb">Pounds · lb</button></div></Card>
         <Card className="p-5 sm:p-6"><SectionTitle kicker="Portable data" title="Backup & restore"/><p className="mb-5 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your workspace is saved only in {native?"this app's":"this browser's"} local storage. Export a JSON backup regularly; importing it replaces the current athletes on this device.{native&&" Browser and APK storage are separate: import your browser backup to transfer clients."}</p><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><ArrowDownToLine size={19}/></div><h3 className="mt-3 font-semibold">Export a backup</h3><p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">{native?"Save or share":"Download"} every athlete, routine and session as JSON.</p><button className={`${quietBtn} mt-4 w-full`} onClick={exportFile} disabled={exporting} data-testid="button-export-backup"><ArrowDownToLine size={15}/>{exporting?"Preparing…":native?"Save / share JSON":"Download JSON"}</button></div>
           <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_70%)]"><FileUp size={19}/></div><h3 className="mt-3 font-semibold">Restore a backup</h3><p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Choose a CoachAura JSON backup to restore your data. Older backups are also supported.</p><input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={e=>readFile(e.target.files?.[0])} data-testid="input-backup-file"/><button className={`${quietBtn} mt-4 w-full`} onClick={()=>fileRef.current?.click()} data-testid="button-import-backup"><FileUp size={15}/>Choose JSON</button></div></div>
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-3 text-xs leading-relaxed text-[hsl(38_95%_80%)]"><CircleHelp className="mt-0.5 shrink-0" size={15}/><span>Backups include personal coaching notes and measurements. Store the file somewhere private.</span></div>
@@ -278,6 +291,16 @@ function NotFoundPage() {
 
 function WorkspaceApp() {
   const health=usePersistenceHealth();
+  const appearance=useFloor(s=>s.appearance);
+  useLayoutEffect(()=>{
+    if(health.phase==="loading"||health.phase==="read-error")return;
+    const root=document.documentElement;
+    if(appearance==="default")delete root.dataset.appearance;
+    else root.dataset.appearance=appearance;
+    root.classList.toggle("dark",appearance!=="orange-light-grey");
+    const themeColor=appearance==="orange-light-grey"?"#F2F3F5":appearance==="orange-charcoal"?"#111214":"#0B0B0D";
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content",themeColor);
+  },[appearance,health.phase]);
   useEffect(()=>{void initializePlayBilling();},[]);
   useEffect(()=>{void Promise.resolve(useFloor.persist.rehydrate()).catch(()=>{});},[]);
   if(health.phase==="read-error")return <PersistenceStatus/>;

@@ -69,13 +69,25 @@ test("CoachAura 7/30-day completed test workouts, empty and high workloads map w
 test("CoachAura front/back and labelled buttons share workload mapping while selection handlers remain intact", () => {
   const ui = readFileSync(new URL("../../components/muscle-map.tsx", import.meta.url), "utf8");
   assert.ok(ui.includes('SHAPES[view][id]'));
-  assert.ok(ui.includes('coachAuraWorkloadColor(byId.get(id)?.weeklyEquivalent ?? 0)'));
+  assert.ok(ui.includes('coachAuraWorkloadColor(byId.get(id)?.weeklyEquivalent ?? 0, appearance)'));
+  assert.ok(ui.includes("workloadLegendForAppearance(appearance)"));
   assert.ok(ui.includes('fill={colorOf(id)}'));
   assert.ok(ui.includes('background: colorOf(id)'));
   assert.ok(ui.includes('onClick={() => onSelect(id)}'));
   assert.ok(ui.includes('onKeyDown={keyHandler(id)}'));
   assert.ok(ui.includes('onClick={() => setView(v)}'));
   assert.ok(ui.includes('weighted sets/week'));
+});
+
+test("orange appearances only change the workload palette, not its values or thresholds", () => {
+  const dark = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "orange-charcoal"));
+  const light = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "orange-light-grey"));
+  assert.deepEqual(dark, ["#35353B", "#572B13", "#874212", "#B9540D", "#E66F18", "#FF993D"]);
+  assert.deepEqual(light, ["#D5D5DB", "#F5D3B8", "#EEAF79", "#D98035", "#B95006", "#873700"]);
+  assert.equal(intensityForWeeklyEquivalent(3), "moderate");
+  assert.equal(intensityForWeeklyEquivalent(6), "high");
+  assert.equal(intensityForWeeklyEquivalent(10), "very-high");
+  assert.equal(coachAuraWorkloadColor(10, "default"), "#C6FF57");
 });
 
 test("all six exact CoachAura colour anchors and unchanged source thresholds", () => {

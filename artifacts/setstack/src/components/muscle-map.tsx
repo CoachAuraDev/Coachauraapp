@@ -1,6 +1,7 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
+import { useFloor } from "@/lib/gymmane/store";
 import { MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
-import { coachAuraWorkloadColor, COACHAURA_WORKLOAD_LEGEND } from "@/lib/gymmane/muscle-intensity-colors";
+import { coachAuraWorkloadColor, workloadLegendForAppearance } from "@/lib/gymmane/muscle-intensity-colors";
 import type { MuscleActivity, MuscleGroup, MuscleIntensity, MuscleView } from "@/lib/gymmane/muscle-activity";
 
 const INTENSITY_LABEL: Record<MuscleIntensity, string> = {
@@ -79,9 +80,11 @@ export function MuscleMap({
   onSelect: (id: MuscleGroup) => void;
 }) {
   const [view, setView] = useState<MuscleView>("front");
+  const appearance = useFloor((s) => s.appearance);
   const byId = useMemo(() => new Map(muscles.map((m) => [m.id, m])), [muscles]);
   const intensityOf = (id: MuscleGroup): MuscleIntensity => byId.get(id)?.intensity ?? "none";
-  const colorOf = (id: MuscleGroup) => coachAuraWorkloadColor(byId.get(id)?.weeklyEquivalent ?? 0);
+  const colorOf = (id: MuscleGroup) => coachAuraWorkloadColor(byId.get(id)?.weeklyEquivalent ?? 0, appearance);
+  const legend = workloadLegendForAppearance(appearance);
   const describe = (id: MuscleGroup, label: string) =>
     `${label}: ${INTENSITY_LABEL[intensityOf(id)]}, ${(byId.get(id)?.weeklyEquivalent ?? 0).toFixed(2)} weighted sets/week`;
   const visible = MUSCLE_GROUPS.filter((g) => (g.views as readonly MuscleView[]).includes(view));
@@ -96,10 +99,10 @@ export function MuscleMap({
   return (
     <div
       data-testid="muscle-map"
-      className="w-full rounded-2xl border border-[#303036] bg-[#17171B] p-3 text-[#F5F5F7] sm:p-4"
+      className="w-full rounded-2xl border border-[var(--muscle-map-border)] bg-[var(--muscle-map-surface)] p-3 text-[var(--muscle-map-text)] sm:p-4"
     >
-      <style>{`.mm-region{cursor:pointer;outline:none}.mm-region path{transition:opacity .15s}.mm-region:hover path{opacity:.82}.mm-region:focus-visible path{stroke:#fff;stroke-width:2.2}`}</style>
-      <div role="tablist" aria-label="Body view" className="mx-auto mb-3 grid max-w-xs grid-cols-2 gap-1 rounded-xl bg-[#0B0B0D] p-1">
+      <style>{`.mm-region{cursor:pointer;outline:none}.mm-region path{transition:opacity .15s}.mm-region:hover path{opacity:.82}.mm-region:focus-visible path{stroke:var(--muscle-map-focus);stroke-width:2.2}`}</style>
+      <div role="tablist" aria-label="Body view" className="mx-auto mb-3 grid max-w-xs grid-cols-2 gap-1 rounded-xl bg-[var(--muscle-map-background)] p-1">
         {(["front", "back"] as const).map((v) => (
           <button
             key={v}
@@ -109,7 +112,7 @@ export function MuscleMap({
             onClick={() => setView(v)}
             data-testid={`button-muscle-view-${v}`}
             className={`min-h-10 rounded-lg text-sm font-semibold capitalize ${
-              view === v ? "bg-[#B7F34A] text-[#0B0B0D]" : "text-[#A1A1AA]"
+              view === v ? "bg-[var(--muscle-map-highlight)] text-[var(--muscle-map-background)]" : "text-[var(--muscle-map-muted)]"
             }`}
           >
             {v}
@@ -124,7 +127,7 @@ export function MuscleMap({
         data-testid={`svg-muscle-map-${view}`}
         className="mx-auto block h-auto max-h-[70dvh] w-full max-w-[300px]"
       >
-        <g fill="#2a2a31" stroke="#3a3a42" strokeWidth="1">
+        <g fill="var(--muscle-map-body)" stroke="var(--muscle-map-body-border)" strokeWidth="1">
           {BODY_BASE[view].map((d, i) => (
             <g key={i}>
               <path d={d} />
@@ -150,7 +153,7 @@ export function MuscleMap({
               onClick={() => onSelect(id)}
               onKeyDown={keyHandler(id)}
               fill={colorOf(id)}
-              stroke={selected ? "#ffffff" : "#17171B"}
+              stroke={selected ? "var(--muscle-map-focus)" : "var(--muscle-map-unselected-stroke)"}
               strokeWidth={selected ? 2.4 : 1.2}
               strokeLinejoin="round"
             >
@@ -184,13 +187,13 @@ export function MuscleMap({
                 aria-pressed={selected}
                 data-testid={`button-muscle-${id}`}
                 className={`flex min-h-11 w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left ${
-                  selected ? "border-[#B7F34A] bg-[#222228]" : "border-[#303036] bg-[#0B0B0D]"
+                    selected ? "border-[var(--muscle-map-highlight)] bg-[var(--muscle-map-selected)]" : "border-[var(--muscle-map-border)] bg-[var(--muscle-map-background)]"
                 }`}
               >
-                <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-[#303036]" style={{ background: colorOf(id) }} />
+                <span aria-hidden="true" className="h-3 w-3 shrink-0 rounded-full border border-[var(--muscle-map-border)]" style={{ background: colorOf(id) }} />
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-semibold">{label}</span>
-                  <span className="block truncate text-[10px] text-[#A1A1AA]">{INTENSITY_LABEL[intensity]}</span>
+                  <span className="block truncate text-[10px] text-[var(--muscle-map-muted)]">{INTENSITY_LABEL[intensity]}</span>
                 </span>
               </button>
             </li>
@@ -198,15 +201,15 @@ export function MuscleMap({
         })}
       </ul>
 
-      <ul className="mt-4 grid grid-cols-3 gap-x-2 gap-y-3 text-xs text-[#F5F5F7]" aria-label="Weekly-equivalent workload colour scale" data-testid="legend-muscle-map">
-        {COACHAURA_WORKLOAD_LEGEND.map((item) => (
+      <ul className="mt-4 grid grid-cols-3 gap-x-2 gap-y-3 text-xs text-[var(--muscle-map-text)]" aria-label="Weekly-equivalent workload colour scale" data-testid="legend-muscle-map">
+        {legend.map((item) => (
           <li key={item.label} className="flex items-center gap-1.5">
-            <span aria-hidden="true" className="h-3.5 w-3.5 shrink-0 rounded-sm border border-[#303036]" style={{ background: item.color }} />
-            <span>{item.label}<span className="block text-[10px] text-[#A1A1AA]">{item.marker}</span></span>
+            <span aria-hidden="true" className="h-3.5 w-3.5 shrink-0 rounded-sm border border-[var(--muscle-map-border)]" style={{ background: item.color }} />
+            <span>{item.label}<span className="block text-[10px] text-[var(--muscle-map-muted)]">{item.marker}</span></span>
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-[11px] leading-relaxed text-[#A1A1AA]">Weighted sets/week. The low band blends olive to dark lime below 3; no thresholds have changed. Colours show workload, not biological recovery.</p>
+      <p className="mt-3 text-[11px] leading-relaxed text-[var(--muscle-map-muted)]">Weighted sets/week. The low band blends {appearance === "default" ? "olive to dark lime" : "through the orange scale"} below 3; no thresholds have changed. Colours show workload, not biological recovery.</p>
     </div>
   );
 }
