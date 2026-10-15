@@ -179,6 +179,11 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
   }, (weight) => weight === Number(measurement));
 
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
+  assert.equal(
+    await page.evaluate('document.querySelector(\'[data-testid="tab-muscles"]\')?.textContent.trim()'),
+    "Muscle Analytics",
+    "The client navigation should use the new Muscle Analytics label",
+  );
   const overviewCharts = await page.evaluate(`({
     muscle: !!document.querySelector('[data-testid="card-client-muscle-balance"] svg.recharts-surface'),
     weekly: !!document.querySelector('[data-testid="card-client-weekly-sets"] svg.recharts-surface'),

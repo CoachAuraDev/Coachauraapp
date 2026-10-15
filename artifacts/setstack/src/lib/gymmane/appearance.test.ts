@@ -4,8 +4,8 @@ import { DEFAULT_APPEARANCE, APPEARANCE_THEMES, isAppearanceTheme } from "./appe
 import { useFloor } from "./store.ts";
 import { encodeBackup, inspectBackup, validateSavedFloor } from "./backup.ts";
 
-test("appearance options are validated and old saved records default to the unchanged CoachAura palette", () => {
-  assert.equal(DEFAULT_APPEARANCE, "default");
+test("new installations default to Orange & Charcoal while saved theme choices remain supported", () => {
+  assert.equal(DEFAULT_APPEARANCE, "orange-charcoal");
   assert.deepEqual(APPEARANCE_THEMES.map((item) => item.value), [
     "default", "orange-charcoal", "orange-light-grey", "light-lime-charcoal", "light-lime-grey",
   ]);
@@ -20,12 +20,14 @@ test("appearance options are validated and old saved records default to the unch
     clients: [], custom: [], templates: [], draft: null, unit: "kg",
   };
   assert.equal(validateSavedFloor(oldShape).appearance, DEFAULT_APPEARANCE);
+  assert.equal(validateSavedFloor({ ...oldShape, appearance: "default" }).appearance, "default");
+  assert.equal(validateSavedFloor({ ...oldShape, appearance: "light-lime-charcoal" }).appearance, "light-lime-charcoal");
   assert.equal(state.appearance, DEFAULT_APPEARANCE);
 });
 
 test("selected appearance survives a local-store rehydration", async () => {
   const { setAppearance } = useFloor.getState();
-  for (const appearance of ["orange-light-grey", "light-lime-charcoal", "light-lime-grey"] as const) {
+  for (const { value: appearance } of APPEARANCE_THEMES) {
     setAppearance(appearance);
     assert.equal(useFloor.getState().appearance, appearance);
     await useFloor.persist.rehydrate();
