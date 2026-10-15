@@ -1,0 +1,26 @@
+Add a polished Client Overview section to Coachaura that looks and feels like a modern fitness tracking app (dark theme, clean cards, soft orange/peach accents).
+The Client Overview should display these three key visualizations for the selected client:
+Muscle Balance Radar Chart
+A large radar/spider chart in the center showing volume or balance scores across major muscle groups.
+Surround the radar with small body silhouette diagrams (front and back views) that highlight the corresponding muscle groups in a soft orange/peach color when they have good volume, and dimmer when they are lagging.
+Below the chart show a short text line: “Needs more: [list of lagging muscle groups]” (e.g. “Needs more: Trapezius, Abdomen”).
+Use a dark background card with subtle grid lines.
+This Week – Sets Overview
+A horizontal row of 7 small bars or cards for Mon–Sun.
+Show the number of sets completed each day.
+Highlight the current day with a brighter/white fill.
+Display the total sets for the week in the top-right corner (e.g. “47 sets”).
+Strength Progress – Estimated 1RM
+A card titled “STRENGTH · EST. 1RM”.
+Show the selected exercise name (start with “Leg Extension” as example, make it switchable later).
+Large current estimated 1RM value (e.g. “189 kg”).
+A small green badge with the recent change (e.g. “↗ +13.1 kg”).
+A smooth line chart underneath showing the 1RM trend over the last several weeks/sessions, with a filled area under the line and a glowing dot on the latest point.
+Design requirements:
+Match the dark, premium look from modern fitness apps (very dark backgrounds, soft borders, rounded cards).
+Use a warm accent color similar to #D4A574 or soft peach/orange for charts and highlights.
+Fully responsive – works well on both desktop and mobile.
+Place these three components in a clean vertical or grid layout under the client header/overview.
+Use Recharts (or Chart.js if preferred) for the charts. Keep the body silhouettes as simple SVG or PNG overlays that can be colored based on data.
+Make the data dynamic / prop-driven so it can later be connected to real client data.
+Please implement this Client Overview page/section now, including placeholder/mock data that looks realistic, and make the components clean and reusable.
