@@ -704,6 +704,75 @@ async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
   await page.click("button-editor-cancel");
 }
 
+async function rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
+  const session = amina?.sessions.find((item) => item.id === "seed-amina-1");
+  assert.ok(session, "Amina's saved workout should be available to edit");
+  const allSets = session.exercises.flatMap((exercise) => exercise.sets.map((set) => set.id));
+  assert.ok(allSets.length > 0, "The saved workout should start with sets to remove");
+
+  const snapshot = async () => ({
+    amina: {
+      chest: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest"),
+      triceps: await muscleChartSnapshot(page, baseUrl, "seed-amina", "triceps"),
+      quadriceps: await muscleChartSnapshot(page, baseUrl, "seed-amina", "quadriceps"),
+      chest30: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30),
+    },
+    leoChest: await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest"),
+  });
+  const beforeCharts = await snapshot();
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  await page.fill("input-edit-session-name", "This edit must not be saved");
+  const changedDate = session.date === "2020-01-01" ? "2020-01-02" : "2020-01-01";
+  await page.fill("input-edit-session-date", changedDate);
+
+  for (const exercise of session.exercises) {
+    const expanded = await page.evaluate(`(() => {
+      const section = document.querySelector('[data-testid="editor-exercise-${exercise.id}"]');
+      const toggle = section?.querySelector("button[aria-expanded]");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return !!toggle;
+    })()`);
+    assert.equal(expanded, true, `Expand ${exercise.name} sets`);
+    for (const set of exercise.sets) {
+      await page.click(`button-editor-remove-set-${set.id}`);
+    }
+  }
+
+  assert.equal(
+    await page.evaluate('document.querySelectorAll(\'[data-testid^="editor-set-"]\').length'),
+    0,
+    "Every saved set should be removed from the unsaved editor",
+  );
+  await page.click("button-editor-save");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')?.textContent',
+  ), "A workout needs at least one set. Use Cancel and delete the session instead.",
+  "Saving a workout with no remaining sets should show the validation message");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ), true, "The editor should stay open after rejecting the empty workout");
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "A rejected empty-workout save must not persist the edited name, date, or sets");
+
+  await page.click("button-editor-cancel");
+  await waitFor("cancelled empty saved workout editor to close", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "Cancelling after the rejected save must leave every stored client record unchanged");
+  assert.deepEqual(await snapshot(), beforeCharts,
+    "Rejecting and cancelling the empty-workout edit must leave all checked muscle charts unchanged");
+
+  await reloadAndWait(page, "reloaded cancelled empty workout edit", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "Workout history and client records must remain unchanged after reload");
+  assert.deepEqual(await snapshot(), beforeCharts,
+    "Muscle chart snapshots must remain unchanged after reload");
+}
+
 async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
   const beforeState = await storedState(page);
   const amina = beforeState.clients.find((client) => client.id === "seed-amina");
@@ -1532,6 +1601,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   await assertAppearance(page, "default");
   await cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Cancelling saved-set edits leaves client history and muscle charts unchanged");
+  await rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl);
+  t.diagnostic("Saving a workout with every set removed is rejected; cancelling preserves history and charts");
   await addSavedSetAndVerifyCharts(page, baseUrl, initialClients);
   t.diagnostic("Adding a saved set updates only the intended client's direct and indirect muscle totals");
   await rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl);
