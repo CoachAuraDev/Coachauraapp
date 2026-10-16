@@ -128,6 +128,27 @@ test("Settings exposes exactly two fixed appearance choices and keeps the app da
   assert.match(app, /root\.classList\.add\("dark"\)/);
 });
 
+test("client analytics charts load only when the muscle tab is opened", () => {
+  const app = read("src/App.tsx");
+  assert.ok(app.includes('lazy(() => import("@/components/muscle-activity-dashboard")'));
+  assert.ok(app.includes('lazy(() => import("@/components/client-overview-visualizations")'));
+  assert.ok(app.includes('tab==="muscles"&&<Suspense fallback='));
+  assert.doesNotMatch(app, /import \{ (?:MuscleActivityDashboard|ClientOverviewVisualizations) \} from/);
+});
+
+test("typography fonts are bundled locally with their Open Font License notices", () => {
+  const html = read("index.html");
+  const css = read("src/index.css");
+  assert.doesNotMatch(html, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
+  assert.doesNotMatch(css, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
+  for (const font of ["dm-sans-latin", "dm-mono-400-latin", "dm-mono-500-latin", "space-grotesk-latin"]) {
+    assert.ok(css.includes(`./assets/fonts/${font}.woff2`), `${font} must be loaded locally`);
+  }
+  for (const license of ["DM-Sans-OFL.txt", "DM-Mono-OFL.txt", "Space-Grotesk-OFL.txt"]) {
+    assert.match(read(`public/fonts/${license}`), /SIL Open Font License, Version 1\.1/);
+  }
+});
+
 test("screen transitions do not retain a transformed container around fixed dialogs", () => {
   const css = read("src/index.css");
   const transition = css.match(/\.page-enter\s*\{([^}]+)\}/)?.[1];

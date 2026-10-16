@@ -11,6 +11,35 @@ type Rect = { l: number; t: number; r: number; b: number };
 const MERGED: Partial<Record<string, string>> = { abdomen: "obliques", back: "lowerback" };
 const BACK_VIEW = new Set(["trapezius", "back", "triceps", "glutes", "hamstrings", "calves"]);
 const half = (id: string): Rect => BACK_VIEW.has(id) ? { l: 270, t: 0, r: 540, b: 462 } : { l: 0, t: 0, r: 262, b: 462 };
+type Point = { x: number; y: number };
+const BODY_OUTLINE_PATHS = [...BODY.bodyBaseMain, ...BODY.bodyBaseLite];
+const BODY_OUTLINE_SAMPLE_STEP = 2;
+let sampledBodyOutline: readonly Point[] | null = null;
+
+function bodyOutlinePoints(): readonly Point[] {
+  if (sampledBodyOutline) return sampledBodyOutline;
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("style", "position:absolute;width:0;height:0;visibility:hidden");
+  document.body.appendChild(svg);
+  const points: Point[] = [];
+  try {
+    for (const d of BODY_OUTLINE_PATHS) {
+      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", d);
+      svg.appendChild(path);
+      const len = path.getTotalLength();
+      for (let at = 0; at < len; at += BODY_OUTLINE_SAMPLE_STEP) {
+        const point = path.getPointAtLength(at);
+        points.push({ x: point.x, y: point.y });
+      }
+    }
+  } finally {
+    svg.remove();
+  }
+  sampledBodyOutline = points;
+  return points;
+}
+
 export function cropRect(id: string): Rect {
   const cx = BACK_VIEW.has(id) ? 411 : 115;
   if (id === "calves") return { l: cx - 100, t: 262, r: cx + 100, b: 462 };
@@ -18,26 +47,16 @@ export function cropRect(id: string): Rect {
   return { l: cx - 135, t: top, r: cx + 135, b: top + 270 };
 }
 const cache = new Map<string, Rect>();
-/** MuscleFigurePainter.content: bounds of sampled base-body outline points (step 2) inside crop ∩ half. */
+/** Bounds of the sampled body outline inside each axis crop; used only to position the radar thumbnails. */
 function contentRect(id: string): Rect {
   const hit = cache.get(id); if (hit) return hit;
   const c = cropRect(id), h = half(id);
   const box = { l: Math.max(c.l, h.l), t: Math.max(c.t, h.t), r: Math.min(c.r, h.r), b: Math.min(c.b, h.b) };
   let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("style", "position:absolute;width:0;height:0;visibility:hidden");
-  document.body.appendChild(svg);
-  for (const d of [...BODY.bodyBaseMain, ...BODY.bodyBaseLite]) {
-    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    p.setAttribute("d", d); svg.appendChild(p);
-    const len = p.getTotalLength();
-    for (let at = 0; at < len; at += 2) {
-      const q = p.getPointAtLength(at);
-      if (q.x < box.l || q.x >= box.r || q.y < box.t || q.y >= box.b) continue;
-      l = Math.min(l, q.x); t = Math.min(t, q.y); r = Math.max(r, q.x); b = Math.max(b, q.y);
-    }
+  for (const point of bodyOutlinePoints()) {
+    if (point.x < box.l || point.x >= box.r || point.y < box.t || point.y >= box.b) continue;
+    l = Math.min(l, point.x); t = Math.min(t, point.y); r = Math.max(r, point.x); b = Math.max(b, point.y);
   }
-  svg.remove();
   const out = Number.isFinite(l) ? { l, t, r, b } : box;
   cache.set(id, out);
   return out;

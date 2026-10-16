@@ -139,6 +139,21 @@ async function openPage(debugPort) {
   const page = new DevToolsPage(socket);
   await page.send("Page.enable");
   await page.send("Runtime.enable");
+  await page.send("Network.enable");
+  page.pendingRequests = new Map();
+  page.socket.addEventListener("message", (event) => {
+    try {
+      const message = JSON.parse(String(event.data));
+      const params = message.params;
+      if (message.method === "Network.requestWillBeSent") {
+        page.pendingRequests.set(params.requestId, { url: params.request.url, type: params.type });
+      } else if (message.method === "Network.loadingFinished" || message.method === "Network.loadingFailed") {
+        page.pendingRequests.delete(params.requestId);
+      }
+    } catch {
+      // Ignore non-JSON and unrelated DevTools messages.
+    }
+  });
   return page;
 }
 
@@ -146,12 +161,13 @@ async function loadPage(page, method, params) {
   let listener;
   let timeout;
   let response;
+  const readyEvent = method === "Page.navigate" ? "Page.domContentEventFired" : "Page.loadEventFired";
   const loaded = new Promise((resolve, reject) => {
     listener = (event) => {
-      if (JSON.parse(String(event.data)).method === "Page.loadEventFired") resolve();
+      if (JSON.parse(String(event.data)).method === readyEvent) resolve();
     };
     page.socket.addEventListener("message", listener);
-    timeout = setTimeout(() => reject(new Error(`${method} did not finish loading: ${JSON.stringify({ params, response, previousUrl: page.lastUrl })}`)), 15000);
+    timeout = setTimeout(() => reject(new Error(`${method} did not finish loading: ${JSON.stringify({ params, response, previousUrl: page.lastUrl, pendingRequests: [...(page.pendingRequests?.values() ?? [])] })}`)), 15000);
   });
   try {
     await Promise.all([page.send(method, params).then((result) => { response = result; }), loaded]);
@@ -167,8 +183,8 @@ async function navigate(page, url, selector) {
   await loadPage(page, "Page.navigate", { url });
   await waitFor(`route ${url}`, () => page.evaluate("location.href"), (href) => href === url);
   await waitFor(`page content ${selector}`, () => page.evaluate(
-    `document.querySelector('[data-testid="${selector}"]') !== null`,
-  ));
+    `(() => ({ found: document.querySelector('[data-testid="${selector}"]') !== null, href: location.href, readyState: document.readyState, text: document.body?.innerText?.slice(0, 240) }))()`,
+  ), (state) => state?.found === true);
 }
 
 async function reloadAndWait(page, description, selector) {
