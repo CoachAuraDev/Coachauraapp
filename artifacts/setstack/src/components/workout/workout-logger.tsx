@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Check, ChevronDown, Copy, Dumbbell, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { fromDisplay, formatLoad, shortDate, toDisplay } from "@/lib/gymmane/engine";
 import { personalRecords } from "@/lib/gymmane/metrics";
 import { nextSetDefaults, plannedSetCount, previousExercisePerformance } from "@/lib/gymmane/workout-logging";
+import { isRapidDuplicateSubmission, type SubmissionFingerprint } from "@/lib/gymmane/submission-guard";
 import type { DraftEntry, SetLog } from "@/lib/gymmane/models";
 import { RestTimer } from "./rest-timer";
 import { fieldClass, labelClass, primaryBtn, quietBtn, rirText, type AskConfirm } from "./shared";
@@ -98,6 +99,8 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   const [showAdd, setShowAdd] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState("");
+  const lastSubmitted = useRef<SubmissionFingerprint | null>(null);
+  const userInputRevision = useRef(0);
   useEffect(() => setMinimized(false), [draft?.startedAt, draft?.clientId]);
   useEffect(() => {
     const resume = () => setMinimized(false);
@@ -165,6 +168,7 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   if (minimized) return <button onClick={() => setMinimized(false)} className={`${primaryBtn} fixed bottom-4 right-4 z-40 shadow-xl`} data-testid="button-resume-session"><Dumbbell size={16}/>Resume workout · {totalSets} sets</button>;
 
   const update = (patch: Partial<Fields>) => {
+    userInputRevision.current += 1;
     const next = { ...f, ...patch };
     setF(next);
     setError("");
@@ -186,8 +190,16 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
     if (!Number.isFinite(w) || w < 0) { setError("Load must be zero or more."); return; }
     if (!Number.isInteger(r) || r < 1 || r > 100) { setError("Reps must be a whole number from 1 to 100."); return; }
     if (rir != null && (!Number.isFinite(rir) || rir < 0 || rir > 10)) { setError("RIR must be between 0 and 10."); return; }
+    const key = JSON.stringify([active.id, userInputRevision.current]);
+    const submittedAt = performance.now();
+    if (isRapidDuplicateSubmission(lastSubmitted.current, key, submittedAt)) return;
+    const previousSetCount = active.sets.length;
     logSet({ reps: r, weight: f.kg != null ? f.kg : fromDisplay(w, unit), kind: f.kind, rpe: rir == null ? null : 10 - rir });
     const st = useFloor.getState();
+    const savedExercise = st.draft?.exercises.find((exercise) => exercise.id === active.id);
+    if (savedExercise && savedExercise.sets.length > previousSetCount) {
+      lastSubmitted.current = { key, at: submittedAt };
+    }
     const d = st.draft;
     const ex = d?.exercises[d.activeIndex];
     if (d && ex) {
