@@ -472,8 +472,8 @@ async function verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient) {
   })`), afterDetails, "Selected muscle details, recovery, and last-exposure history should persist after reload");
 }
 
-async function openSavedSessionEditor(page, baseUrl, sessionId) {
-  await navigate(page, `${baseUrl}/clients/seed-amina?tab=history`, "button-client-start-session");
+async function openSavedSessionEditor(page, baseUrl, sessionId, ownerId = "seed-amina") {
+  await navigate(page, `${baseUrl}/clients/${ownerId}?tab=history`, "button-client-start-session");
   const historyOpened = await page.evaluate(`(() => {
     const edit = document.querySelector('[data-testid="button-edit-session-${sessionId}"]');
     const details = edit?.closest("details");
@@ -485,6 +485,128 @@ async function openSavedSessionEditor(page, baseUrl, sessionId) {
   await waitFor("saved workout editor", () => page.evaluate(
     'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
   ));
+}
+
+async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients) {
+  const fixture = structuredClone(sourceClients.find((client) => client.id === "seed-amina"));
+  assert.ok(fixture, "The saved-set fixture should have a source client");
+  fixture.id = "test-added-saved-set";
+  fixture.name = "Added saved set fixture";
+  fixture.sessions = [fixture.sessions[0]];
+  const session = fixture.sessions[0];
+  session.id = `${fixture.id}-session`;
+  session.date = todayIso();
+  const bench = session.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(bench, "The isolated saved workout should contain a mapped bench press");
+  session.exercises = [bench];
+
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    data.state.clients = data.state.clients.filter((client) => client.id !== ${JSON.stringify(fixture.id)});
+    data.state.clients.push(${JSON.stringify(fixture)});
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  const fixtureMuscleUrl = `${baseUrl}/clients/${fixture.id}?tab=muscles&period=7`;
+  await page.evaluate(`history.replaceState(null, "", ${JSON.stringify(fixtureMuscleUrl)})`);
+  await reloadAndWait(page, "isolated add-set fixture", "dashboard-muscle-activity");
+
+  const beforeState = await storedState(page);
+  const savedFixture = beforeState.clients.find((client) => client.id === fixture.id);
+  const savedSession = savedFixture?.sessions.find((item) => item.id === session.id);
+  const savedBench = savedSession?.exercises.find((exercise) => exercise.id === bench.id);
+  assert.ok(savedSession && savedBench, "The isolated saved workout should be available for editing");
+  assert.equal(savedBench.sets.length, 2, "The fixture bench press should begin with two sets");
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedFixture = expectedClients.find((client) => client.id === fixture.id);
+  const expectedSession = expectedFixture.sessions.find((item) => item.id === session.id);
+  const expectedBench = expectedSession.exercises.find((exercise) => exercise.id === bench.id);
+  const clientSnapshot = async (ownerId) => ({
+    chest: await muscleChartSnapshot(page, baseUrl, ownerId, "chest"),
+    triceps: await muscleChartSnapshot(page, baseUrl, ownerId, "triceps"),
+  });
+  const before = await clientSnapshot(fixture.id);
+  const otherBefore = await clientSnapshot("seed-leo");
+  const expectedWeightKg = 42.5;
+  const expectedReps = 6;
+  const expectedRir = 2;
+
+  await openSavedSessionEditor(page, baseUrl, session.id, fixture.id);
+  await page.click(`button-editor-add-set-${bench.id}`);
+  await waitFor("new saved-workout set row", () => page.evaluate(
+    `document.querySelectorAll('[data-testid^="editor-exercise-${bench.id}"] [data-testid^="editor-set-"]').length`,
+  ), (count) => count === savedBench.sets.length + 1);
+  const newSetId = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const rows = [...(section?.querySelectorAll('[data-testid^="editor-set-"]') ?? [])];
+    return rows.at(-1)?.getAttribute("data-testid")?.replace("editor-set-", "");
+  })()`);
+  assert.ok(newSetId, "The newly added set should have a stable editor row");
+  const unit = beforeState.unit;
+  const displayWeight = String(Number(toDisplay(expectedWeightKg, unit).toFixed(2)));
+  await page.fill(`input-editor-weight-${newSetId}`, displayWeight);
+  await page.fill(`input-editor-reps-${newSetId}`, String(expectedReps));
+  await page.fill(`input-editor-rir-${newSetId}`, String(expectedRir));
+  await page.click("button-editor-save");
+  await waitFor("new saved-workout set persisted", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === fixture.id);
+    return client?.sessions.find((item) => item.id === session.id)
+      ?.exercises.find((exercise) => exercise.id === bench.id)?.sets.length;
+  }, (count) => count === savedBench.sets.length + 1);
+
+  const afterState = await storedState(page);
+  const addedSet = afterState.clients.find((client) => client.id === fixture.id)
+    ?.sessions.find((item) => item.id === session.id)
+    ?.exercises.find((exercise) => exercise.id === bench.id)?.sets.at(-1);
+  assert.ok(addedSet?.id && !savedBench.sets.some((set) => set.id === addedSet.id),
+    "The added set should be stored with a new ID");
+  const expectedAddedSet = {
+    id: addedSet.id,
+    weight: expectedWeightKg,
+    reps: expectedReps,
+    rpe: 10 - expectedRir,
+    kind: "normal",
+  };
+  assert.deepEqual(addedSet, expectedAddedSet,
+    "The added set must be stored with its exact load, reps, effort, type, and editor ID");
+  expectedBench.sets.push(expectedAddedSet);
+  assert.deepEqual(afterState.clients, expectedClients,
+    "Saving the added set must change only the isolated fixture session");
+
+  const after = await clientSnapshot(fixture.id);
+  for (const [muscle, directDelta, indirectDelta, weightedDelta] of [
+    ["chest", 1, 0, 1],
+    ["triceps", 0, 1, 0.5],
+  ]) {
+    const initial = before[muscle];
+    const actual = after[muscle];
+    assert.equal(actual.workingSets, initial.workingSets + 1,
+      `${muscle}: the new normal set should add one working set`);
+    assert.equal(actual.completedSessions, initial.completedSessions,
+      `${muscle}: adding a set must not create another completed session`);
+    const [initialDirect, initialIndirect] = initial.selected.directIndirect.split(" / ").map(Number);
+    assert.equal(actual.selected.directIndirect,
+      `${initialDirect + directDelta} / ${initialIndirect + indirectDelta}`,
+      `${muscle}: direct and indirect set counts should reflect the new contribution`);
+    assert.equal(Number(actual.selected.totalSets),
+      Number(initial.selected.totalSets) + directDelta + indirectDelta,
+      `${muscle}: involved-set count should reflect the new contribution`);
+    assert.equal(actual.selected.weightedSets,
+      (Number(initial.selected.weightedSets) + weightedDelta).toFixed(2),
+      `${muscle}: weighted workload should reflect the new set's effort factor`);
+    assert.equal(actual.selected.weeklyLoad,
+      (Number(initial.selected.weeklyLoad) + weightedDelta).toFixed(2),
+      `${muscle}: weekly-equivalent workload should reflect the selected period`);
+  }
+  assert.deepEqual(await clientSnapshot("seed-leo"), otherBefore,
+    "Adding a set to one client's workout must not change another client's charts");
+
+  await reloadAndWait(page, "reloaded added-set muscle dashboard", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "The new set and only its fixture workout must persist after reload");
+  assert.deepEqual(await clientSnapshot(fixture.id), after,
+    "The 7-day direct and indirect muscle totals must persist after reload");
+  assert.deepEqual(await clientSnapshot("seed-leo"), otherBefore,
+    "Another client's charts must remain unchanged after reload");
 }
 
 async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
@@ -1281,7 +1403,7 @@ async function changeThemeAndReload(page, baseUrl, nextAppearance, savedClients)
   ), "The logged set should still be visible after the reload");
 }
 
-test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 120000 }, async (t) => {
+test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 180000 }, async (t) => {
   const chrome = browserBinary();
   try {
     await access(chrome);
@@ -1410,6 +1532,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   await assertAppearance(page, "default");
   await cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Cancelling saved-set edits leaves client history and muscle charts unchanged");
+  await addSavedSetAndVerifyCharts(page, baseUrl, initialClients);
+  t.diagnostic("Adding a saved set updates only the intended client's direct and indirect muscle totals");
   await rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Out-of-range and non-finite RIR corrections are rejected without changing storage or charts");
   await correctSavedEffortAndVerifyCharts(page, baseUrl);
