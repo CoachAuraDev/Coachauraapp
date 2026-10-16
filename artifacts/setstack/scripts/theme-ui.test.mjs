@@ -8,7 +8,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
-import { toDisplay } from "../src/lib/gymmane/engine.ts";
+import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
@@ -52,6 +52,7 @@ class DevToolsPage {
       const waiting = this.pending.get(message.id);
       if (!waiting) return;
       this.pending.delete(message.id);
+      clearTimeout(waiting.timeout);
       if (message.error) waiting.reject(new Error(message.error.message));
       else waiting.resolve(message.result);
     });
@@ -60,7 +61,11 @@ class DevToolsPage {
   send(method, params = {}) {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      const timeout = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new Error(`DevTools ${method} timed out: ${JSON.stringify(params)}`));
+      }, 15000);
+      this.pending.set(id, { resolve, reject, timeout });
       this.socket.send(JSON.stringify({ id, method, params }));
     });
   }
@@ -137,8 +142,29 @@ async function openPage(debugPort) {
   return page;
 }
 
+async function loadPage(page, method, params) {
+  let listener;
+  let timeout;
+  let response;
+  const loaded = new Promise((resolve, reject) => {
+    listener = (event) => {
+      if (JSON.parse(String(event.data)).method === "Page.loadEventFired") resolve();
+    };
+    page.socket.addEventListener("message", listener);
+    timeout = setTimeout(() => reject(new Error(`${method} did not finish loading: ${JSON.stringify({ params, response, previousUrl: page.lastUrl })}`)), 15000);
+  });
+  try {
+    await Promise.all([page.send(method, params).then((result) => { response = result; }), loaded]);
+    if (params.url) page.lastUrl = params.url;
+  } finally {
+    clearTimeout(timeout);
+    page.socket.removeEventListener("message", listener);
+  }
+}
+
 async function navigate(page, url, selector) {
-  await page.send("Page.navigate", { url });
+  // Evaluations sent while the old document unloads can lose their response.
+  await loadPage(page, "Page.navigate", { url });
   await waitFor(`route ${url}`, () => page.evaluate("location.href"), (href) => href === url);
   await waitFor(`page content ${selector}`, () => page.evaluate(
     `document.querySelector('[data-testid="${selector}"]') !== null`,
@@ -150,7 +176,7 @@ async function reloadAndWait(page, description, selector) {
   await page.send("Page.addScriptToEvaluateOnNewDocument", {
     source: `window[${JSON.stringify(marker)}] = true;`,
   });
-  await page.send("Page.reload", { ignoreCache: true });
+  await loadPage(page, "Page.reload", { ignoreCache: true });
   await waitFor(description, () => page.evaluate(
     `window[${JSON.stringify(marker)}] === true && document.querySelector('[data-testid="${selector}"]') !== null`,
   ));
@@ -245,8 +271,11 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
   themeSwatches.set(appearances[index], chartState.chestColor);
 }
 
-async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest") {
-  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles&period=7`, "dashboard-muscle-activity");
+async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", period = 7) {
+  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles&period=${period}`, "dashboard-muscle-activity");
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="button-muscle-period-${period}"]')?.getAttribute("aria-pressed")`,
+  ), "true", `The ${period}-day chart must be selected`);
   if (muscle === "triceps") await page.click("button-muscle-view-back");
   await page.click(`button-muscle-${muscle}`);
   return await page.evaluate(`({
@@ -407,6 +436,8 @@ async function switchWorkoutUnitAndReload(page, baseUrl, unit) {
 async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
   const aminaBeforeCorrection = await muscleChartSnapshot(page, baseUrl, "seed-amina");
   const leoBeforeCorrection = await muscleChartSnapshot(page, baseUrl, "seed-leo");
+  const amina30BeforeCorrection = await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30);
+  const leo30BeforeCorrection = await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest", 30);
   const beforeState = await storedState(page);
   const amina = beforeState.clients.find((item) => item.id === "seed-amina");
   const session = amina?.sessions.find((item) => item.id === "seed-amina-0");
@@ -466,10 +497,7 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
     "Correcting Amina's workout must not change Leo's muscle chart",
   );
 
-  await page.send("Page.reload", { ignoreCache: true });
-  await waitFor("reloaded client muscle dashboard", () => page.evaluate(
-    'document.querySelector(\'[data-testid="dashboard-muscle-activity"]\') !== null',
-  ));
+  await reloadAndWait(page, "reloaded client muscle dashboard", "dashboard-muscle-activity");
   const savedState = await storedState(page);
   assert.equal(
     savedState.clients.find((item) => item.id === "seed-amina")?.sessions.find((item) => item.id === "seed-amina-0")?.date,
@@ -486,6 +514,84 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
     leoBeforeCorrection,
     "Leo's chart should remain unchanged after reloading",
   );
+
+  assert.deepEqual(
+    await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30),
+    amina30BeforeCorrection,
+    "Moving a workout outside seven days but within thirty must keep its 30-day contributions",
+  );
+
+  const bench = session.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.equal(bench?.sets.length, 2, "The date fixture has two direct chest working sets");
+  for (const set of bench.sets) {
+    assert.equal(set.kind, "normal");
+    assert.ok(set.reps > 0);
+    assert.equal(set.rpe, 8, "Each fixture chest set contributes exactly one weighted set");
+  }
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedSession = expectedClients.find((client) => client.id === "seed-amina")
+    .sessions.find((item) => item.id === session.id);
+  const today = todayIso();
+  const dateDaysAgo = (days) => new Date(Date.parse(`${today}T12:00:00Z`) - days * 86_400_000)
+    .toISOString().slice(0, 10);
+
+  // Thirty calendar days includes today and the preceding 29 days.
+  // Save on both sides of that exact boundary through the real history editor.
+  for (const daysAgo of [29, 30]) {
+    expectedSession.date = dateDaysAgo(daysAgo);
+    await openSavedSessionEditor(page, baseUrl, session.id);
+    await page.fill("input-edit-session-date", expectedSession.date);
+    await page.click("button-editor-save");
+    await waitFor("30-day boundary correction saved and editor closed", () => page.evaluate(
+      'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+    ));
+    assert.deepEqual((await storedState(page)).clients, expectedClients,
+      "Correcting the date must preserve every other session field and client");
+
+    const after30 = await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30);
+    if (daysAgo === 29) {
+      assert.deepEqual(after30, amina30BeforeCorrection,
+        "The oldest included day must retain all 30-day totals and muscle-map workload");
+    } else {
+      assert.equal(after30.workingSets, amina30BeforeCorrection.workingSets - movedWorkingSets,
+        "Crossing the 30-day cutoff must remove exactly this workout's working sets");
+      assert.equal(after30.completedSessions, amina30BeforeCorrection.completedSessions - 1,
+        "Crossing the 30-day cutoff must remove exactly one completed session");
+      const before = amina30BeforeCorrection.selected;
+      const [direct, indirect] = before.directIndirect.split(" / ").map(Number);
+      const weightedSets = Number(before.weightedSets) - bench.sets.length;
+      const weeklyLoad = weightedSets * 7 / 30;
+      assert.equal(after30.selected.directIndirect, `${direct - bench.sets.length} / ${indirect}`,
+        "The selected chest details must exclude the corrected session's direct sets");
+      assert.equal(Number(after30.selected.totalSets), Number(before.totalSets) - bench.sets.length);
+      assert.equal(after30.selected.weightedSets, weightedSets.toFixed(2));
+      assert.equal(after30.selected.weeklyLoad, weeklyLoad.toFixed(2),
+        "The remaining workload must use the 30-day weekly-equivalent scale");
+      const [intensity, label] = weeklyLoad <= 0 ? ["none", "No recorded work"]
+        : weeklyLoad < 3 ? ["low", "Low"]
+        : weeklyLoad < 6 ? ["moderate", "Moderate"]
+        : weeklyLoad < 10 ? ["high", "High"] : ["very-high", "Very high"];
+      assert.equal(after30.selected.intensity, intensity, "The muscle map must use the remaining workload's intensity");
+      assert.equal(after30.selected.workload, `Chest: ${label}, ${weeklyLoad.toFixed(2)} weighted sets/week`,
+        "The muscle map must exclude the corrected session's exact weekly-equivalent workload");
+      assert.notEqual(after30.selected.workload, before.workload);
+    }
+    assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina"), aminaAfterCorrection,
+      "Moving an already excluded workout across the 30-day cutoff must not change the seven-day chart");
+    assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest", 30), leo30BeforeCorrection,
+      "Another client's 30-day chart must remain unchanged");
+
+    await reloadAndWait(page, "reloaded 30-day boundary correction", "dashboard-muscle-activity");
+    assert.deepEqual((await storedState(page)).clients, expectedClients, "The exact corrected date must survive reload");
+    assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30), after30,
+      "The corrected 30-day totals and muscle map must survive reload");
+    assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina"), aminaAfterCorrection,
+      "The seven-day chart must remain accurate after reload");
+    assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest", 30), leo30BeforeCorrection,
+      "Another client's 30-day chart must remain unchanged after reload");
+    assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo"), leoBeforeCorrection,
+      "Another client's seven-day chart must remain unchanged after reload");
+  }
 }
 
 async function exerciseWorkout(page, baseUrl) {
@@ -716,7 +822,9 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
   await correctSavedSetsAndVerifyCharts(page, baseUrl);
+  t.diagnostic("Saved-set corrections verified; checking seven-day and 30-day date boundaries");
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
+  t.diagnostic("Date boundaries, client isolation, and reload persistence verified");
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
   await page.evaluate(`(() => {
     const data = JSON.parse(localStorage.getItem("setstack-v1"));
