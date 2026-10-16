@@ -345,7 +345,14 @@ async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", pe
       directIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
       weightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
       weeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent
-    }
+    },
+    mapRegions: Array.from(document.querySelectorAll('[data-testid^="region-muscle-"]'))
+      .map((region) => ({
+        id: region.getAttribute("data-testid"),
+        intensity: region.getAttribute("data-intensity"),
+        workload: region.getAttribute("aria-label")
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
   })`);
 }
 
@@ -780,6 +787,26 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
   const today = todayIso();
   const dateDaysAgo = (days) => new Date(Date.parse(`${today}T12:00:00Z`) - days * 86_400_000)
     .toISOString().slice(0, 10);
+  const benchWeightedSets = bench.sets.reduce((total, set) => total + effortFactorFromRpe(set.rpe), 0);
+  const assertExactRestoredTotals = (excluded, restored, baseline, period, description) => {
+    assert.equal(restored.workingSets, excluded.workingSets + movedWorkingSets,
+      `${description}: restore exactly this workout's working sets`);
+    assert.equal(restored.completedSessions, excluded.completedSessions + 1,
+      `${description}: restore exactly one completed session`);
+    assert.deepEqual(restored, baseline,
+      `${description}: restore the original totals and visible muscle-map workload without double counting`);
+    const [direct, indirect] = excluded.selected.directIndirect.split(" / ").map(Number);
+    const expectedWeighted = Number(excluded.selected.weightedSets) + benchWeightedSets;
+    assert.equal(restored.selected.totalSets, String(Number(excluded.selected.totalSets) + bench.sets.length),
+      `${description}: restore exactly the bench press's chest set count`);
+    assert.equal(restored.selected.directIndirect, `${direct + bench.sets.length} / ${indirect}`,
+      `${description}: restore exactly the bench press's direct chest sets`);
+    assert.equal(restored.selected.weightedSets, expectedWeighted.toFixed(2),
+      `${description}: restore the exact effort-weighted chest sets`);
+    assert.equal(restored.selected.weeklyLoad, (expectedWeighted * 7 / period).toFixed(2),
+      `${description}: restore the exact ${period}-day weekly-equivalent chest workload`);
+  };
+  let excluded30DayChart;
 
   // Thirty calendar days includes today and the preceding 29 days.
   // Save on both sides of that exact boundary through the real history editor.
@@ -799,6 +826,7 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
       assert.deepEqual(after30, amina30BeforeCorrection,
         "The oldest included day must retain all 30-day totals and muscle-map workload");
     } else {
+      excluded30DayChart = after30;
       assert.equal(after30.workingSets, amina30BeforeCorrection.workingSets - movedWorkingSets,
         "Crossing the 30-day cutoff must remove exactly this workout's working sets");
       assert.equal(after30.completedSessions, amina30BeforeCorrection.completedSessions - 1,
@@ -838,6 +866,75 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
     assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo"), leoBeforeCorrection,
       "Another client's seven-day chart must remain unchanged after reload");
   }
+
+  const excluded7DayChart = await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest");
+  assert.deepEqual(excluded7DayChart, aminaAfterCorrection,
+    "The session must still be excluded from the seven-day chart before restoring it");
+  assert.ok(excluded30DayChart, "The session must be excluded from the 30-day chart before restoring it");
+
+  // Restore the session to the 30-day window while keeping it outside the seven-day window.
+  expectedSession.date = dateDaysAgo(8);
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  await page.fill("input-edit-session-date", expectedSession.date);
+  await page.click("button-editor-save");
+  await waitFor("restored 30-day workout date saved", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "Restoring the date must preserve all non-date session data and every other client");
+  const restored30DayChart = await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30);
+  assertExactRestoredTotals(
+    excluded30DayChart,
+    restored30DayChart,
+    amina30BeforeCorrection,
+    30,
+    "Restoring the workout to the 30-day window",
+  );
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina"), aminaAfterCorrection,
+    "Restoring the 30-day contribution must not add the workout to the seven-day chart");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest", 30), leo30BeforeCorrection,
+    "Restoring Amina's workout must not change Leo's 30-day chart");
+  await reloadAndWait(page, "reloaded restored 30-day workout", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "The restored date and all non-date client and session data must persist after reload");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30), restored30DayChart,
+    "The exact restored 30-day set and muscle-map workload totals must persist after reload");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina"), aminaAfterCorrection,
+    "The excluded seven-day chart must remain accurate after reload");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest", 30), leo30BeforeCorrection,
+    "Leo's 30-day chart must remain unchanged after reload");
+
+  // Restore the same workout into the seven-day window; both ranges should match their original totals.
+  expectedSession.date = dateDaysAgo(6);
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  await page.fill("input-edit-session-date", expectedSession.date);
+  await page.click("button-editor-save");
+  await waitFor("restored seven-day workout date saved", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "Restoring the seven-day date must preserve all non-date session data and every other client");
+  const restored7DayChart = await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest");
+  assertExactRestoredTotals(
+    excluded7DayChart,
+    restored7DayChart,
+    aminaBeforeCorrection,
+    7,
+    "Restoring the workout to the seven-day window",
+  );
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30), amina30BeforeCorrection,
+    "Restoring the seven-day contribution must not double-count its 30-day workload");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo"), leoBeforeCorrection,
+    "Restoring Amina's workout must not change Leo's seven-day chart");
+  await reloadAndWait(page, "reloaded restored seven-day workout", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "The seven-day restored date and all non-date client and session data must persist after reload");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina"), restored7DayChart,
+    "The exact restored seven-day set and muscle-map workload totals must persist after reload");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30), amina30BeforeCorrection,
+    "The 30-day workload must remain exact after reloading the seven-day restoration");
+  assert.deepEqual(await muscleChartSnapshot(page, baseUrl, "seed-leo"), leoBeforeCorrection,
+    "Leo's seven-day chart must remain unchanged after reload");
 }
 
 async function exerciseWorkout(page, baseUrl) {
