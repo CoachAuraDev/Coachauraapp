@@ -744,6 +744,73 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     assert.notEqual(expectedBench.sets[correction.setIndex].rpe, originalRpe,
       "Each step must actually cross to a different effort factor");
   }
+
+  const beforeClear = await snapshot("seed-amina");
+  const leoBeforeClear = await snapshot("seed-leo");
+  const clearedSetIndex = 0;
+  const clearedSet = expectedBench.sets[clearedSetIndex];
+  const previousFactor = effortFactorFromRpe(clearedSet.rpe);
+  assert.equal(effortFactorFromRpe(null), 1,
+    "A cleared saved effort value must use the neutral ×1.0 factor");
+  clearedSet.rpe = null;
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  const expanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(expanded, true, "Expand the bench press RIR inputs to clear one saved value");
+  await page.fill(`input-editor-rir-${clearedSet.id}`, "");
+  await page.click("button-editor-save");
+  await waitFor("cleared RIR correction and closed editor", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+
+  const clearedState = await storedState(page);
+  assert.deepEqual(clearedState.clients, expectedClients,
+    "Clearing RIR must save null and leave all other workout and client data unchanged");
+  assert.equal(
+    clearedState.clients.find((client) => client.id === "seed-amina")
+      ?.sessions.find((item) => item.id === session.id)
+      ?.exercises.find((exercise) => exercise.id === bench.id)
+      ?.sets.find((set) => set.id === clearedSet.id)?.rpe,
+    null,
+    "The cleared saved effort must be stored as null",
+  );
+
+  const afterClear = await snapshot("seed-amina");
+  const directDelta = effortFactorFromRpe(null) - previousFactor;
+  const secondaryDelta = directDelta * 0.5;
+  for (const [muscle, delta] of [["chest", directDelta], ["triceps", secondaryDelta]]) {
+    const initial = beforeClear[muscle];
+    const actual = afterClear[muscle];
+    assert.equal(actual.workingSets, initial.workingSets,
+      `${muscle}: clearing RIR must not change overall working-set count`);
+    assert.equal(actual.completedSessions, initial.completedSessions,
+      `${muscle}: clearing RIR must not change completed-session count`);
+    assert.equal(actual.selected.totalSets, initial.selected.totalSets,
+      `${muscle}: clearing RIR must not change involved-set count`);
+    assert.equal(actual.selected.directIndirect, initial.selected.directIndirect,
+      `${muscle}: clearing RIR must not change direct or indirect set counts`);
+    assert.ok(Math.abs(Number(actual.selected.weightedSets) -
+      (Number(initial.selected.weightedSets) + delta)) < 0.011,
+    `${muscle}: direct or secondary weighted totals must use the neutral ×1.0 factor`);
+    assert.ok(Math.abs(Number(actual.selected.weeklyLoad) -
+      (Number(initial.selected.weeklyLoad) + delta * 7 / 30)) < 0.011,
+    `${muscle}: weekly-equivalent workload must reflect the neutral ×1.0 factor`);
+  }
+  assert.deepEqual(await snapshot("seed-leo"), leoBeforeClear,
+    "Clearing Amina's RIR must not change another client's charts");
+
+  await reloadAndWait(page, "reloaded cleared RIR dashboard", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "The null effort value must persist after reload");
+  assert.deepEqual(await snapshot("seed-amina"), afterClear,
+    "Direct and secondary neutral-weighted totals must persist after reload");
+  assert.deepEqual(await snapshot("seed-leo"), leoBeforeClear,
+    "Another client's charts must remain unchanged after reload");
 }
 
 async function switchWorkoutUnitAndReload(page, baseUrl, unit) {
