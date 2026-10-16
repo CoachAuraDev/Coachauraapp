@@ -364,6 +364,101 @@ async function openSavedSessionEditor(page, baseUrl, sessionId) {
   ));
 }
 
+async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
+  const session = amina?.sessions.find((item) => item.id === "seed-amina-1");
+  const bench = session?.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(session, "Amina's saved workout should be available to edit");
+  assert.ok(bench, "The saved workout should contain a bench press");
+  assert.equal(bench.sets.length, 2, "The bench press should start with two saved sets");
+
+  const snapshot = async () => ({
+    amina: {
+      chest: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest"),
+      triceps: await muscleChartSnapshot(page, baseUrl, "seed-amina", "triceps"),
+      quadriceps: await muscleChartSnapshot(page, baseUrl, "seed-amina", "quadriceps"),
+      chest30: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30),
+    },
+    leoChest: await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest"),
+  });
+  const beforeCharts = await snapshot();
+  const expectedWeight = String(Number(toDisplay(bench.sets[0].weight + 5, beforeState.unit).toFixed(2)));
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  const expanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(expanded, true, "Expand the saved bench press sets");
+  await page.fill(`input-editor-weight-${bench.sets[0].id}`, expectedWeight);
+  await page.click(`button-editor-remove-set-${bench.sets[1].id}`);
+  assert.equal(
+    await page.evaluate(`document.querySelectorAll('[data-testid^="editor-set-"]').length`),
+    1,
+    "The unsaved edit should change one set and remove the other",
+  );
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "Changing and removing sets in the open editor must not alter stored client history");
+
+  await page.click("button-editor-cancel");
+  await waitFor("cancelled saved workout editor to close", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "Cancelling the set correction must leave every stored client record unchanged");
+  assert.deepEqual(await snapshot(), beforeCharts,
+    "Cancelling the set correction must leave the muscle charts unchanged");
+
+  await reloadAndWait(page, "reloaded cancelled workout correction", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "Client records and workout history must remain unchanged after reload");
+  assert.deepEqual(await snapshot(), beforeCharts,
+    "Muscle chart snapshots must remain unchanged after reload");
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  const reopenedExpanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(reopenedExpanded, true, "Expand the saved bench press sets again");
+  await waitFor("original bench sets rendered in reopened editor", () => page.evaluate(
+    `document.querySelectorAll('[data-testid="editor-exercise-${bench.id}"] [data-testid^="editor-set-"]').length`,
+  ), (count) => count === bench.sets.length);
+  const reopened = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    return {
+      count: section?.querySelectorAll('[data-testid^="editor-set-"]').length,
+      sets: ${JSON.stringify(bench.sets.map((set) => ({
+        id: set.id,
+        weight: String(Number(toDisplay(set.weight, beforeState.unit).toFixed(2))),
+        reps: String(set.reps),
+        rir: set.rpe == null ? "" : String(10 - set.rpe),
+        kind: set.kind,
+      })))}.map((set) => ({
+        ...set,
+        weight: section?.querySelector('[data-testid="input-editor-weight-' + set.id + '"]')?.value,
+        reps: section?.querySelector('[data-testid="input-editor-reps-' + set.id + '"]')?.value,
+        rir: section?.querySelector('[data-testid="input-editor-rir-' + set.id + '"]')?.value,
+        kind: section?.querySelector('[data-testid="select-editor-kind-' + set.id + '"]')?.value,
+      })),
+    };
+  })()`);
+  assert.equal(reopened.count, bench.sets.length, "Reopening the editor must show both original bench sets");
+  assert.deepEqual(reopened.sets, bench.sets.map((set) => ({
+    id: set.id,
+    weight: String(Number(toDisplay(set.weight, beforeState.unit).toFixed(2))),
+    reps: String(set.reps),
+    rir: set.rpe == null ? "" : String(10 - set.rpe),
+    kind: set.kind,
+  })), "Reopening the editor must show the original load, reps, effort, and set type");
+  await page.click("button-editor-cancel");
+}
+
 async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
   const beforeState = await storedState(page);
   const amina = beforeState.clients.find((client) => client.id === "seed-amina");
@@ -974,6 +1069,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.reps, 7);
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
+  await cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl);
+  t.diagnostic("Cancelling saved-set edits leaves client history and muscle charts unchanged");
   await correctSavedEffortAndVerifyCharts(page, baseUrl);
   t.diagnostic("Effort boundaries, unchanged set counts, client isolation, and reload persistence verified");
   await correctSavedSetsAndVerifyCharts(page, baseUrl);
