@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Switch, useLocation, useParams, useSearch } from "wouter";
 import {
-  Activity, ArrowDownToLine, ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check,
+  Activity, ArrowLeft, ArrowRight, BarChart3, CalendarDays, Check,
   ChevronDown, ChevronRight, CircleHelp, ClipboardList, Dumbbell, FileUp,
   HeartPulse, Menu, MoreHorizontal, Plus, Settings, ShieldCheck, Sparkles, Trash2,
   UserRound, Users, Weight, X, Zap,
@@ -15,12 +15,12 @@ import { CustomExerciseMuscles } from "@/components/custom-exercise-muscles";
 import { Modal, fieldClass, btn, primaryBtn, quietBtn, labelClass } from "@/components/workout/shared";
 import { WorkoutDrawer } from "@/components/workout/workout-logger";
 import { BackupRestoreDialog, exportOriginalStorage } from "@/components/backup-restore";
+import { BackupExportAction, BackupStatusText, useBackupReminder } from "@/components/backup-reminder";
 import { PersistenceStatus, usePersistenceHealth } from "@/components/persistence-status";
 import { MAX_BACKUP_BYTES } from "@/lib/gymmane/backup";
 import { TemplateAssign } from "@/components/workout/template-assign";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { isAndroidApp } from "@/lib/native/android";
-import { exportBackupFile } from "@/lib/native/backup";
 import { billingController, initializePlayBilling } from "@/lib/billing/controller";
 import { FREE_CLIENT_LIMIT } from "@/lib/billing/entitlement";
 import { LifetimePaywall, useBillingSnapshot } from "@/components/lifetime-paywall";
@@ -222,10 +222,9 @@ function SettingsPage() {
   const setUnit=useFloor(s=>s.setUnit);
   const appearance=useFloor(s=>s.appearance);
   const setAppearance=useFloor(s=>s.setAppearance);
-  const exportBackup=useFloor(s=>s.exportBackup);
   const resetDemo=useFloor(s=>s.resetDemo);
+  const backupReminder=useBackupReminder();
   const [status,setStatus]=useState("");
-  const [exporting,setExporting]=useState(false);
   const native=isAndroidApp();
   const [restoreText,setRestoreText]=useState("");
   const [confirmRestore,setConfirmRestore]=useState(false);
@@ -233,15 +232,6 @@ function SettingsPage() {
   const billing=useBillingSnapshot();
   const fileRef=useRef<HTMLInputElement>(null);
   const clients=useFloor(s=>s.clients);
-  const exportFile=async()=>{
-    if(exporting)return;
-    setExporting(true);
-    try {
-      const mode=await exportBackupFile(exportBackup(),`coachaura-backup-${todayIso()}.json`);
-      setStatus(mode==="android"?"Backup prepared for sharing. Keep a saved copy outside CoachAura; the app's temporary copy is only a cache.":"Backup downloaded. Keep it somewhere safe.");
-    } catch(error) {setStatus(`Could not export the backup: ${error instanceof Error?error.message:String(error)}`);}
-    finally {setExporting(false);}
-  };
   const readFile=(file?:File)=>{if(!file)return;if(file.size>MAX_BACKUP_BYTES){setStatus("Backup exceeds the 20 MB safety limit.");return;}const reader=new FileReader();reader.onload=()=>{const raw=String(reader.result??"");const result=useFloor.getState().previewBackup(raw);if(!result.ok){setStatus(result.error);return;}setRestoreText(raw);setConfirmRestore(true)};reader.onerror=()=>setStatus("Could not read that file. Try another JSON backup.");reader.readAsText(file);};
   const reset=()=>ask({title:"Reset demo data?",message:"Reset all local data to the original demo floor? This replaces your current athletes and sessions.",confirmLabel:"Reset data",onConfirm:()=>{resetDemo();setStatus("Demo data restored.");}});
   return <>{confirmNode}<Header eyebrow="Workspace preferences" title="Keep your data close." subtitle="Set your working units and make a portable copy of the training floor."/>
@@ -275,9 +265,26 @@ function SettingsPage() {
             </div>
          </Card>
          <Card className="p-5 sm:p-6"><SectionTitle kicker="Display preferences" title="Training units"/><p className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose how loads appear in the workspace. Stored values stay in kilograms so your training history remains consistent.</p><div className="flex max-w-sm gap-2 rounded-xl bg-[hsl(var(--muted))] p-1"><button onClick={()=>setUnit("kg")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="kg"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-kg">Kilograms · kg</button><button onClick={()=>setUnit("lb")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="lb"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-lb">Pounds · lb</button></div></Card>
-        <Card className="p-5 sm:p-6"><SectionTitle kicker="Portable data" title="Backup & restore"/><p className="mb-5 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your workspace is saved only in {native?"this app's":"this browser's"} local storage. Export a JSON backup regularly; importing it replaces the current athletes on this device.{native&&" Browser and APK storage are separate: import your browser backup to transfer clients."}</p><div className="grid gap-3 sm:grid-cols-2"><div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><ArrowDownToLine size={19}/></div><h3 className="mt-3 font-semibold">Export a backup</h3><p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">{native?"Save or share":"Download"} every athlete, routine and session as JSON.</p><button className={`${quietBtn} mt-4 w-full`} onClick={exportFile} disabled={exporting} data-testid="button-export-backup"><ArrowDownToLine size={15}/>{exporting?"Preparing…":native?"Save / share JSON":"Download JSON"}</button></div>
-          <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_70%)]"><FileUp size={19}/></div><h3 className="mt-3 font-semibold">Restore a backup</h3><p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Choose a CoachAura JSON backup to restore your data. Older backups are also supported.</p><input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={e=>readFile(e.target.files?.[0])} data-testid="input-backup-file"/><button className={`${quietBtn} mt-4 w-full`} onClick={()=>fileRef.current?.click()} data-testid="button-import-backup"><FileUp size={15}/>Choose JSON</button></div></div>
-          <div className="mt-4 flex items-start gap-2 rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-3 text-xs leading-relaxed text-[hsl(38_95%_80%)]"><CircleHelp className="mt-0.5 shrink-0" size={15}/><span>Backups include personal coaching notes and measurements. Store the file somewhere private.</span></div>
+        <Card className="p-5 sm:p-6">
+          <SectionTitle kicker="Portable data" title="Backup & restore"/>
+          <p className="mb-4 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your workspace is saved only in {native?"this app's":"this browser's"} local storage. Backups are saved to a location you choose; CoachAura does not upload them. {native&&"Browser and APK storage are separate, so import a browser backup to transfer clients."}</p>
+          <div className="mb-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3"><p className="mono mb-1 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Backup status</p><BackupStatusText timestamp={backupReminder.state.lastSuccessfulExportAt}/></div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><ShieldCheck size={19}/></div>
+              <h3 className="mt-3 font-semibold">Export a backup</h3>
+              <p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Includes clients, measurements, notes, completed sessions, custom exercises, templates, current preferences and an unfinished workout.</p>
+              <BackupExportAction buttonLabel="Export Backup" buttonClassName={`${quietBtn} w-full`} testId="button-export-backup" onConfirmSaved={backupReminder.recordSuccessfulExport}/>
+            </div>
+            <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(38_90%_55%/.16)] text-[hsl(38_95%_70%)]"><FileUp size={19}/></div>
+              <h3 className="mt-3 font-semibold">Restore a backup</h3>
+              <p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Choose a CoachAura JSON file. CoachAura validates and previews it first; confirming replaces the current workspace after a recovery copy is kept on this device.</p>
+              <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={e=>readFile(e.target.files?.[0])} data-testid="input-backup-file"/>
+              <button className={`${quietBtn} mt-4 w-full`} onClick={()=>fileRef.current?.click()} data-testid="button-import-backup"><FileUp size={15}/>Choose JSON</button>
+            </div>
+          </div>
+          <div className="mt-4 flex items-start gap-2 rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-3 text-xs leading-relaxed text-[hsl(38_95%_80%)]"><CircleHelp className="mt-0.5 shrink-0" size={15}/><span>Backups include personal coaching notes and measurements. The JSON file is not encrypted by CoachAura; save it somewhere private. The reminder is updated only after you confirm that a permanent copy was saved.</span></div>
           {status&&<p role="status" className="mt-4 rounded-xl bg-[hsl(var(--accent))] px-3 py-2 text-sm" data-testid="status-settings">{status}</p>}
         </Card></div>
       <div className="space-y-5">

@@ -7,6 +7,7 @@ import { formatLoad, isoWeekday, shortDate, todayIso, WEEKDAYS } from "@/lib/gym
 import { recentActivity, weekOverview } from "@/lib/gymmane/dashboard";
 import { MUSCLE_LABEL } from "@/lib/gymmane/metrics";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
+import { BackupReminderCard, useBackupReminder } from "@/components/backup-reminder";
 
 const field = "min-h-11 min-w-0 w-full rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 py-2 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]";
 const btn = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-45";
@@ -51,6 +52,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
   const clients = useFloor((s) => s.clients);
   const draft = useFloor((s) => s.draft);
   const unit = useFloor((s) => s.unit);
+  const backupReminder = useBackupReminder();
   const startSession = useFloor((s) => s.startSession);
   const [, go] = useLocation();
   const [search, setSearch] = useState("");
@@ -91,6 +93,12 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
       <div><p className={`${kicker} mb-1`}>{WEEKDAYS[wd - 1]} · {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric" })}</p><h1 className="display-font text-3xl font-semibold tracking-tight">Today</h1></div>
       <button className={primary} onClick={onAddClient} data-testid="button-add-client"><Plus size={16} />Add client</button>
     </div>
+
+    {!draft && <BackupReminderCard
+      hasLocalData={clients.length > 0}
+      onConfirmSaved={backupReminder.recordSuccessfulExport}
+      onRemindLater={backupReminder.remindLater}
+    />}
 
     <section className={`${card} mb-4 p-4 sm:p-5`} data-testid="card-next-workout">
       {draft ? <>
