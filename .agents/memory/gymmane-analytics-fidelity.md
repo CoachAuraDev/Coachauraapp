@@ -47,3 +47,14 @@ dashboard and expressly required unchanged calculations, filters and interaction
 **How to apply:** Preserve the active dashboard's lime workload presentation and
 keep its recovery estimates separate. Do not restore the old blue/orange/red
 workload colours when maintaining the CoachAura view.
+
+Selected-period workload and longitudinal exposure history are separate views of the same
+training log. Correcting a workout date can clear the selected-period totals while the last
+exposure and recovery estimate still reflect that retained historical workout.
+
+**Why:** The user explicitly requires recovery and last-exposure history to remain independent
+of selected-period workload.
+
+**How to apply:** When changing workout dates or activity-period filtering, verify selected-period
+workload separately from recovery and last-exposure history; do not treat zero current-period
+workload as deleted training history.

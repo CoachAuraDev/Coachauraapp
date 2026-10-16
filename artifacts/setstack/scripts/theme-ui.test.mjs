@@ -356,6 +356,109 @@ async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", pe
   })`);
 }
 
+async function verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient) {
+  const [session] = fixtureClient.sessions;
+  assert.equal(fixtureClient.sessions.length, 1, "The isolated chart fixture must contain one historical workout");
+  const fixtureId = fixtureClient.id;
+  const sessionId = session.id;
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    data.state.clients = data.state.clients.filter((client) => client.id !== ${JSON.stringify(fixtureId)});
+    data.state.clients.push(${JSON.stringify(fixtureClient)});
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  await reloadAndWait(page, "isolated one-workout muscle dashboard", "dashboard-muscle-activity");
+
+  const before = await muscleChartSnapshot(page, baseUrl, fixtureId, "chest", 7);
+  assert.equal(before.completedSessions, 1, "The only completed workout should count in the selected period");
+  assert.ok(before.workingSets > 0, "The only completed workout should add working sets");
+  assert.notEqual(before.selected.intensity, "none", "The chest map should record the isolated workout");
+  assert.ok(await page.evaluate(
+    'document.querySelectorAll(\'[data-testid^="row-muscle-contributor-"]\').length > 0',
+  ), "The selected muscle should list an exercise from the isolated workout");
+
+  const correctedDate = new Date(Date.parse(`${session.date}T12:00:00.000Z`) - 8 * 24 * 60 * 60 * 1000)
+    .toISOString().slice(0, 10);
+  await navigate(page, `${baseUrl}/clients/${fixtureId}?tab=history`, "button-client-start-session");
+  const historyOpened = await page.evaluate(`(() => {
+    const edit = document.querySelector('[data-testid="button-edit-session-${sessionId}"]');
+    const details = edit?.closest("details");
+    details?.querySelector("summary")?.click();
+    return !!details?.open;
+  })()`);
+  assert.equal(historyOpened, true, "Open the fixture workout in client history");
+  await page.click(`button-edit-session-${sessionId}`);
+  await waitFor("isolated saved workout editor", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ));
+  await page.fill("input-edit-session-date", correctedDate);
+  await page.click("button-editor-save");
+  await waitFor("isolated workout date correction", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === fixtureId);
+    return client?.sessions.find((item) => item.id === sessionId)?.date;
+  }, (date) => date === correctedDate);
+
+  const after = await muscleChartSnapshot(page, baseUrl, fixtureId, "chest", 7);
+  const afterDetails = await page.evaluate(`({
+    selectedTotalSets: document.querySelector('[data-testid="text-selected-total-sets"]')?.textContent,
+    selectedDirectIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
+    selectedWeightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
+    selectedWeeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent,
+    selectedLastSession: document.querySelector('[data-testid="text-selected-last-session"]')?.textContent,
+    selectedFrequency: document.querySelector('[data-testid="text-selected-frequency"]')?.textContent,
+    selectedRecoveryStatus: document.querySelector('[data-testid="status-muscle-recovery"]')?.textContent,
+    contributorRows: document.querySelectorAll('[data-testid^="row-muscle-contributor-"]').length
+  })`);
+  assert.equal(after.workingSets, 0, "Moving the only recent workout out of the period should clear working sets");
+  assert.equal(after.completedSessions, 0, "Moving the only recent workout out of the period should clear completed sessions");
+  assert.ok(after.mapRegions.length > 0, "The muscle map should render its mapped regions");
+  assert.ok(after.mapRegions.every((region) =>
+    region.intensity === "none" && region.workload.includes("No recorded work"),
+  ), "Every visible muscle region should show no recorded workload");
+  assert.equal(after.selected.totalSets, "0", "The selected muscle should have zero working sets");
+  assert.equal(after.selected.directIndirect, "0 / 0", "The selected muscle should have zero direct and indirect sets");
+  assert.equal(after.selected.weightedSets, "0.00", "The selected muscle should have zero weighted sets");
+  assert.equal(after.selected.weeklyLoad, "0.00", "The selected muscle should have zero weekly-equivalent workload");
+  assert.equal(afterDetails.contributorRows, 0, "The selected muscle should have no contributor rows");
+  assert.equal(after.selected.intensity, "none");
+  assert.equal(afterDetails.selectedRecoveryStatus, "Recovered · estimate",
+    "Recovery should still reflect the historical exposure after selected-period workload reaches zero");
+  assert.ok(afterDetails.selectedLastSession.includes("8 days ago"),
+    "Last-exposure history should remain visible outside the selected period");
+  assert.match(afterDetails.selectedFrequency, /0 sessions \/ last 7 days0 in selected period/,
+    "Selected-period frequency should reach zero without erasing last-exposure history");
+
+  await page.click("button-muscle-view-back");
+  const backMap = await page.evaluate(`Array.from(document.querySelectorAll('[data-testid^="region-muscle-"]'))
+    .map((region) => ({
+      intensity: region.getAttribute("data-intensity"),
+      workload: region.getAttribute("aria-label")
+    }))`);
+  assert.ok(backMap.length > 0 && backMap.every((region) =>
+    region.intensity === "none" && region.workload.includes("No recorded work"),
+  ), "The back-view muscle map should also show no recorded workload");
+
+  await reloadAndWait(page, "reloaded isolated muscle dashboard", "dashboard-muscle-activity");
+  const persistedClient = (await storedState(page)).clients.find((item) => item.id === fixtureId);
+  assert.deepEqual(persistedClient?.sessions, [{ ...session, date: correctedDate }],
+    "Reload should preserve the historical workout with its corrected date rather than deleting it");
+  assert.deepEqual(
+    await muscleChartSnapshot(page, baseUrl, fixtureId, "chest", 7),
+    after,
+    "Zero selected-period workload, recovery, and last-exposure history should persist after reload",
+  );
+  assert.deepEqual(await page.evaluate(`({
+    selectedTotalSets: document.querySelector('[data-testid="text-selected-total-sets"]')?.textContent,
+    selectedDirectIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
+    selectedWeightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
+    selectedWeeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent,
+    selectedLastSession: document.querySelector('[data-testid="text-selected-last-session"]')?.textContent,
+    selectedFrequency: document.querySelector('[data-testid="text-selected-frequency"]')?.textContent,
+    selectedRecoveryStatus: document.querySelector('[data-testid="status-muscle-recovery"]')?.textContent,
+    contributorRows: document.querySelectorAll('[data-testid^="row-muscle-contributor-"]').length
+  })`), afterDetails, "Selected muscle details, recovery, and last-exposure history should persist after reload");
+}
+
 async function openSavedSessionEditor(page, baseUrl, sessionId) {
   await navigate(page, `${baseUrl}/clients/seed-amina?tab=history`, "button-client-start-session");
   const historyOpened = await page.evaluate(`(() => {
@@ -1174,6 +1277,17 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Saved-set corrections verified; checking seven-day and 30-day date boundaries");
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
   t.diagnostic("Date boundaries, client isolation, and reload persistence verified");
+  const fixtureClient = structuredClone(initialClients.find((item) => item.id === "seed-amina"));
+  fixtureClient.id = "test-last-recent-workout";
+  fixtureClient.name = "Last recent workout fixture";
+  fixtureClient.sessions = [structuredClone(fixtureClient.sessions[0])];
+  fixtureClient.sessions[0].id = `${fixtureClient.id}-0`;
+  fixtureClient.sessions[0].exercises = [
+    fixtureClient.sessions[0].exercises.find((exercise) => exercise.name === "Barbell Bench Press"),
+  ];
+  await verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient);
+  t.diagnostic("Moving the last recent workout clears selected-period workload while retaining history and recovery");
+
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
   await page.evaluate(`(() => {
     const data = JSON.parse(localStorage.getItem("setstack-v1"));
