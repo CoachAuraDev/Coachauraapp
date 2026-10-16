@@ -245,21 +245,120 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
   themeSwatches.set(appearances[index], chartState.chestColor);
 }
 
-async function muscleChartSnapshot(page, baseUrl, clientId) {
+async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest") {
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles&period=7`, "dashboard-muscle-activity");
-  await page.click("button-muscle-chest");
+  if (muscle === "triceps") await page.click("button-muscle-view-back");
+  await page.click(`button-muscle-${muscle}`);
   return await page.evaluate(`({
     workingSets: Number(document.querySelector('[data-testid="text-muscle-working-sets"]')?.textContent),
     completedSessions: Number(document.querySelector('[data-testid="text-muscle-session-count"]')?.textContent),
-    chest: {
-      intensity: document.querySelector('[data-testid="region-muscle-chest"]')?.getAttribute("data-intensity"),
-      workload: document.querySelector('[data-testid="region-muscle-chest"]')?.getAttribute("aria-label"),
+    selected: {
+      intensity: document.querySelector('[data-testid="region-muscle-${muscle}"]')?.getAttribute("data-intensity"),
+      workload: document.querySelector('[data-testid="region-muscle-${muscle}"]')?.getAttribute("aria-label"),
       totalSets: document.querySelector('[data-testid="text-selected-total-sets"]')?.textContent,
       directIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
       weightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
       weeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent
     }
   })`);
+}
+
+async function openSavedSessionEditor(page, baseUrl, sessionId) {
+  await navigate(page, `${baseUrl}/clients/seed-amina?tab=history`, "button-client-start-session");
+  const historyOpened = await page.evaluate(`(() => {
+    const edit = document.querySelector('[data-testid="button-edit-session-${sessionId}"]');
+    const details = edit?.closest("details");
+    if (!details?.open) details?.querySelector("summary")?.click();
+    return !!details?.open;
+  })()`);
+  assert.equal(historyOpened, true, "Open the completed session from Amina's workout history");
+  await page.click(`button-edit-session-${sessionId}`);
+  await waitFor("saved workout editor", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ));
+}
+
+async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
+  // Leave the newest seed workout intact for the separate date-correction case.
+  const session = amina.sessions.find((item) => item.id === "seed-amina-1");
+  const bench = session.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(bench, "The saved workout must contain a bench press with known muscle contributions");
+  assert.equal(bench.sets.length, 2);
+  for (const set of bench.sets) {
+    assert.equal(set.kind, "normal");
+    assert.equal(set.rpe, 8, "Each fixture set contributes 1 direct or 0.5 indirect weighted sets");
+    assert.ok(set.reps > 0);
+  }
+
+  const snapshot = async (id) => ({
+    chest: await muscleChartSnapshot(page, baseUrl, id, "chest"),
+    triceps: await muscleChartSnapshot(page, baseUrl, id, "triceps"),
+    quadriceps: await muscleChartSnapshot(page, baseUrl, id, "quadriceps"),
+  });
+  const before = await snapshot("seed-amina");
+  const leoBefore = await snapshot("seed-leo");
+  const expectedSession = structuredClone(session);
+  const expectedBench = expectedSession.exercises.find((exercise) => exercise.id === bench.id);
+
+  // Check each save independently: deleting a working set, then excluding the
+  // remaining set as a warm-up must each remove exactly one contribution.
+  for (const correction of ["remove", "warmup"]) {
+    await openSavedSessionEditor(page, baseUrl, session.id);
+    const expanded = await page.evaluate(`(() => {
+      const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+      const toggle = section?.querySelector("button[aria-expanded]");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return !!toggle;
+    })()`);
+    assert.equal(expanded, true, "Expand the saved bench press sets");
+    if (correction === "remove") {
+      await page.click(`button-editor-remove-set-${bench.sets[0].id}`);
+      expectedBench.sets.shift();
+    } else {
+      await page.fill(`select-editor-kind-${bench.sets[1].id}`, "warmup");
+      expectedBench.sets[0].kind = "warmup";
+    }
+    await page.click("button-editor-save");
+    await waitFor(`${correction} correction saved and editor closed`, () => page.evaluate(
+      'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+    ));
+    const saved = await storedState(page);
+    const expectedClients = structuredClone(beforeState.clients);
+    const expectedAmina = expectedClients.find((client) => client.id === "seed-amina");
+    expectedAmina.sessions = expectedAmina.sessions.map((item) => item.id === session.id ? expectedSession : item);
+    assert.deepEqual(saved.clients, expectedClients, "Only the intended set correction should be persisted");
+
+    const removed = correction === "remove" ? 1 : 2;
+    const after = await snapshot("seed-amina");
+    for (const [muscle, direct, indirect, weighted] of [
+      ["chest", removed, 0, removed],
+      ["triceps", 0, removed, removed * 0.5],
+      ["quadriceps", 0, 0, 0],
+    ]) {
+      const initial = before[muscle];
+      const actual = after[muscle];
+      assert.equal(actual.workingSets, initial.workingSets - removed, `${muscle}: overall working sets after ${correction}`);
+      assert.equal(actual.completedSessions, initial.completedSessions, "The session still has other working exercises");
+      const [initialDirect, initialIndirect] = initial.selected.directIndirect.split(" / ").map(Number);
+      assert.equal(actual.selected.directIndirect, `${initialDirect - direct} / ${initialIndirect - indirect}`,
+        `${muscle}: exact direct / indirect sets after ${correction}`);
+      assert.equal(Number(actual.selected.totalSets), Number(initial.selected.totalSets) - direct - indirect,
+        `${muscle}: exact involved sets after ${correction}`);
+      assert.equal(actual.selected.weightedSets, (Number(initial.selected.weightedSets) - weighted).toFixed(2),
+        `${muscle}: exact weighted sets after ${correction}`);
+      assert.equal(actual.selected.weeklyLoad, (Number(initial.selected.weeklyLoad) - weighted).toFixed(2),
+        `${muscle}: exact 7-day weekly-equivalent load after ${correction}`);
+    }
+    assert.deepEqual(after.quadriceps.selected, before.quadriceps.selected, "An unrelated muscle must not change");
+    assert.deepEqual(await snapshot("seed-leo"), leoBefore, "Another client's chart must not change");
+
+    await reloadAndWait(page, "reloaded set correction dashboard", "dashboard-muscle-activity");
+    assert.deepEqual((await storedState(page)).clients, expectedClients, "The exact set correction must survive reload");
+    assert.deepEqual(await snapshot("seed-amina"), after, "Corrected muscle totals must survive reload");
+    assert.deepEqual(await snapshot("seed-leo"), leoBefore, "Another client's chart must stay unchanged after reload");
+  }
 }
 
 async function switchWorkoutUnitAndReload(page, baseUrl, unit) {
@@ -351,13 +450,13 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
     "The corrected workout should no longer count as a recent completed session",
   );
   assert.notEqual(
-    aminaAfterCorrection.chest.workload,
-    aminaBeforeCorrection.chest.workload,
+    aminaAfterCorrection.selected.workload,
+    aminaBeforeCorrection.selected.workload,
     "The chest region on the muscle map should reflect the corrected workout date",
   );
   assert.notEqual(
-    aminaAfterCorrection.chest.directIndirect,
-    aminaBeforeCorrection.chest.directIndirect,
+    aminaAfterCorrection.selected.directIndirect,
+    aminaBeforeCorrection.selected.directIndirect,
     "The selected muscle totals should update after the correction",
   );
 
@@ -616,6 +715,7 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.reps, 7);
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
+  await correctSavedSetsAndVerifyCharts(page, baseUrl);
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
   await page.evaluate(`(() => {
