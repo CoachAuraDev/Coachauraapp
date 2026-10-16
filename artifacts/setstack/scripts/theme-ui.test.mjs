@@ -487,6 +487,43 @@ async function openSavedSessionEditor(page, baseUrl, sessionId, ownerId = "seed-
   ));
 }
 
+async function rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const client = beforeState.clients.find((item) => item.id === "seed-amina");
+  const session = client?.sessions.at(-1);
+  assert.ok(session, "Amina should have a completed workout available to edit");
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedSession = expectedClients.find((item) => item.id === client.id)
+    .sessions.find((item) => item.id === session.id);
+  const validDate = new Date(Date.parse(`${session.date}T12:00:00.000Z`) - 86_400_000)
+    .toISOString().slice(0, 10);
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  await page.fillControlledValue("input-edit-session-date", "2026-02-30");
+  await page.click("button-editor-save");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')?.textContent',
+  ), "Enter a valid date.", "February 30 should be rejected instead of normalized");
+  assert.notEqual(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ), false, "The editor should remain open after rejecting an impossible date");
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "Rejecting an impossible date must leave the session and all workout data unchanged");
+
+  expectedSession.date = validDate;
+  await page.fill("input-edit-session-date", validDate);
+  await page.click("button-editor-save");
+  await waitFor("valid saved-workout date correction", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "A valid date should save while preserving all other client and workout data");
+
+  await reloadAndWait(page, "reloaded valid saved-workout date correction", "button-client-start-session");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "The valid date and unchanged workout data should persist after reload");
+}
+
 async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients) {
   const fixture = structuredClone(sourceClients.find((client) => client.id === "seed-amina"));
   assert.ok(fixture, "The saved-set fixture should have a source client");
@@ -1601,6 +1638,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   await assertAppearance(page, "default");
   await cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Cancelling saved-set edits leaves client history and muscle charts unchanged");
+  await rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl);
+  t.diagnostic("Impossible saved-workout dates are rejected without changing history, while valid dates still save");
   await rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Saving a workout with every set removed is rejected; cancelling preserves history and charts");
   await addSavedSetAndVerifyCharts(page, baseUrl, initialClients);
