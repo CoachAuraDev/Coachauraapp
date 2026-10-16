@@ -1,7 +1,7 @@
 import { WEEKDAYS, shiftIso, weekStart } from "./engine.ts";
 import { bestSetOneRm, workingSets } from "./metrics.ts";
 import type { MuscleActivity, MuscleGroup } from "./muscle-activity.ts";
-import type { Client } from "./models.ts";
+import type { Client, MuscleTargetGroup } from "./models.ts";
 
 export type WeeklySetPoint = {
   date: string;
@@ -22,19 +22,21 @@ export type StrengthPoint = {
   e1rm: number;
 };
 
-const RADAR_GROUPS: { label: string; muscles: readonly MuscleGroup[] }[] = [
-  { label: "Chest", muscles: ["chest"] },
-  { label: "Shoulders", muscles: ["front-deltoids", "side-deltoids", "rear-deltoids"] },
-  { label: "Arms", muscles: ["biceps", "triceps", "forearms"] },
-  { label: "Upper back", muscles: ["upper-back", "lats", "traps"] },
-  { label: "Lower back", muscles: ["lower-back"] },
-  { label: "Core", muscles: ["abs", "obliques"] },
-  { label: "Glutes", muscles: ["glutes"] },
-  { label: "Quads", muscles: ["quadriceps"] },
-  { label: "Hamstrings", muscles: ["hamstrings"] },
-  { label: "Adductors", muscles: ["adductors"] },
-  { label: "Calves", muscles: ["calves"] },
-];
+const RADAR_GROUPS = [
+  { id: "chest", label: "Chest", muscles: ["chest"] },
+  { id: "shoulders", label: "Shoulders", muscles: ["front-deltoids", "side-deltoids", "rear-deltoids"] },
+  { id: "arms", label: "Arms", muscles: ["biceps", "triceps", "forearms"] },
+  { id: "upper-back", label: "Upper back", muscles: ["upper-back", "lats", "traps"] },
+  { id: "lower-back", label: "Lower back", muscles: ["lower-back"] },
+  { id: "core", label: "Core", muscles: ["abs", "obliques"] },
+  { id: "glutes", label: "Glutes", muscles: ["glutes"] },
+  { id: "quads", label: "Quads", muscles: ["quadriceps"] },
+  { id: "hamstrings", label: "Hamstrings", muscles: ["hamstrings"] },
+  { id: "adductors", label: "Adductors", muscles: ["adductors"] },
+  { id: "calves", label: "Calves", muscles: ["calves"] },
+] as const satisfies readonly { id: MuscleTargetGroup; label: string; muscles: readonly MuscleGroup[] }[];
+
+export const MUSCLE_TARGET_GROUPS = RADAR_GROUPS.map(({ id, label }) => ({ id, label }));
 
 function validPastDate(date: string, today: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) return false;
@@ -93,8 +95,24 @@ export function muscleBalanceRadar(
   muscles: readonly Pick<MuscleActivity, "id" | "weeklyEquivalent">[],
 ) {
   const byId = new Map(muscles.map((muscle) => [muscle.id, muscle]));
-  return RADAR_GROUPS.map(({ label, muscles: ids }) => ({
+  return RADAR_GROUPS.map(({ id, label, muscles: ids }) => ({
+    id,
     label,
     weeklyEquivalent: ids.reduce((sum, id) => sum + (byId.get(id)?.weeklyEquivalent ?? 0), 0),
   }));
+}
+
+/** Compares observed 30-day weekly-equivalent workload only with targets the trainer explicitly set. */
+export function muscleTargetGuidance(
+  activity: readonly { id: MuscleTargetGroup; label: string; weeklyEquivalent: number }[],
+  targets: Client["muscleTargets"] = {},
+) {
+  return activity.map((group) => {
+    const target = targets?.[group.id];
+    return {
+      ...group,
+      target,
+      belowTarget: target !== undefined && group.weeklyEquivalent < target,
+    };
+  });
 }

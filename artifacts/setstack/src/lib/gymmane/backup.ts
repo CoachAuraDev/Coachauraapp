@@ -2,6 +2,8 @@ import type { CatalogExercise } from "./catalog.ts";
 import { kExercises } from "./catalog.ts";
 import { fromDisplay, SET_KINDS, type Unit } from "./engine.ts";
 import type { Client, Draft, Routine } from "./models.ts";
+import type { MuscleTargetGroup } from "./models.ts";
+import { MUSCLE_TARGET_GROUPS } from "./client-overview.ts";
 import { normalizeSavedAppearance, type AppearanceTheme } from "./appearance.ts";
 
 export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
@@ -134,6 +136,7 @@ export function validateSavedFloor(value: unknown): SavedFloor {
   const catalogIds = new Set(kExercises.map((e) => e.id));
   if (custom.some((e) => catalogIds.has(e.id))) throw new Error("Custom exercise identifier conflicts with the built-in library.");
   const knownExercises = new Set([...catalogIds, ...custom.map((e) => e.id)]);
+  const knownMuscleTargetGroups = new Set(MUSCLE_TARGET_GROUPS.map((group) => group.id));
   const templates = routines(floor.templates === undefined ? [] : floor.templates, "templates");
   const clients = objects(floor.clients, "clients").map((c, i) => {
     const p = `clients[${i}]`;
@@ -155,6 +158,13 @@ export function validateSavedFloor(value: unknown): SavedFloor {
         throw new Error(`${p}.weeklyPlan: invalid day or missing routine.`);
       }
     }
+    const muscleTargets = record(c.muscleTargets === undefined ? {} : c.muscleTargets, `${p}.muscleTargets`);
+    for (const [group, target] of Object.entries(muscleTargets)) {
+      if (!knownMuscleTargetGroups.has(group as MuscleTargetGroup)) {
+        throw new Error(`${p}.muscleTargets: unsupported muscle group ${group}.`);
+      }
+      number(target, `${p}.muscleTargets.${group}`, 0, 100);
+    }
     objects(c.sessions, `${p}.sessions`).forEach((s, j) => {
       const sp = `${p}.sessions[${j}]`;
       date(s.date, `${sp}.date`);
@@ -172,7 +182,11 @@ export function validateSavedFloor(value: unknown): SavedFloor {
         throw new Error(`${p}.bodyweight[${j}]: invalid timestamp.`);
       }
     });
-    return { ...c, routines: assigned } as unknown as Client;
+    return {
+      ...c,
+      routines: assigned,
+      ...(c.muscleTargets === undefined ? {} : { muscleTargets }),
+    } as unknown as Client;
   });
   for (const r of [...templates, ...clients.flatMap((c) => c.routines)]) {
     for (const exerciseId of r.exerciseIds) {

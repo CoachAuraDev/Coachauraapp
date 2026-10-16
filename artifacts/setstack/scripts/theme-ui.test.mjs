@@ -260,6 +260,46 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
   assert.ok(Number(await page.evaluate(
     'document.querySelector(\'[data-testid="text-muscle-working-sets"]\')?.textContent',
   )) > 0, "The profile chart should show completed working sets");
+  await page.fill("input-muscle-target-chest", "100");
+  await page.click("button-save-muscle-targets");
+  await waitFor("client-specific muscle target save", async () => {
+    const state = await storedState(page);
+    return state.clients.find((item) => item.id === clientId)?.muscleTargets?.chest;
+  }, (target) => target === 100);
+  assert.match(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-muscle-guidance-chest"]\')?.textContent',
+  ), /Below coaching target/);
+  assert.equal(
+    (await storedState(page)).clients.find((item) => item.id === "seed-leo")?.muscleTargets,
+    undefined,
+    "Saving Amina's target must not alter another client",
+  );
+  await reloadAndWait(page, "reloaded muscle coaching targets", "client-training-analytics");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-muscle-target-chest"]\')?.value',
+  ), "100", "Saved targets should be visible after reload");
+  assert.match(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-muscle-guidance-chest"]\')?.textContent',
+  ), /Below coaching target/, "Guidance should persist after reload");
+  await page.fill("input-muscle-target-chest", "101");
+  await page.click("button-save-muscle-targets");
+  assert.match(await page.evaluate(
+    'document.querySelector(\'[role="alert"]\')?.textContent',
+  ), /from 0 to 100/, "Out-of-range targets should be rejected with a clear message");
+  assert.equal(
+    (await storedState(page)).clients.find((item) => item.id === clientId)?.muscleTargets?.chest,
+    100,
+    "An invalid edit must not overwrite the saved target",
+  );
+  await page.fill("input-muscle-target-chest", "");
+  await page.click("button-save-muscle-targets");
+  await waitFor("cleared client-specific muscle target", async () => {
+    const state = await storedState(page);
+    return state.clients.find((item) => item.id === clientId)?.muscleTargets;
+  }, (targets) => targets === undefined);
+  assert.match(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-muscle-guidance-chest"]\')?.textContent',
+  ), /No target set/, "Clearing a target should remove its comparison");
   await page.click("button-muscle-period-30");
   assert.equal(await page.evaluate(
     'document.querySelector(\'[data-testid="button-muscle-period-30"]\')?.getAttribute("aria-pressed")',

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Area,
   AreaChart,
@@ -19,10 +19,18 @@ import {
 } from "recharts";
 import { Card } from "@/components/ui/card";
 import { analyzeMuscleActivity, MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
-import { muscleBalanceRadar, estimatedStrengthHistory, strengthExerciseOptions, weeklySetPoints } from "@/lib/gymmane/client-overview";
+import {
+  muscleBalanceRadar,
+  muscleTargetGuidance,
+  MUSCLE_TARGET_GROUPS,
+  estimatedStrengthHistory,
+  strengthExerciseOptions,
+  weeklySetPoints,
+} from "@/lib/gymmane/client-overview";
 import { formatLoad, todayIso, type Unit } from "@/lib/gymmane/engine";
 import type { CatalogExercise } from "@/lib/gymmane/catalog";
-import type { Client } from "@/lib/gymmane/models";
+import type { Client, MuscleTargetGroup } from "@/lib/gymmane/models";
+import { useFloor } from "@/lib/gymmane/store";
 
 type ClientOverviewVisualizationsProps = {
   client: Client;
@@ -45,16 +53,37 @@ function shortDate(date: string): string {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function targetInputValues(targets: Client["muscleTargets"] = {}): Record<MuscleTargetGroup, string> {
+  return Object.fromEntries(
+    MUSCLE_TARGET_GROUPS.map(({ id }) => [id, targets?.[id] === undefined ? "" : String(targets[id])]),
+  ) as Record<MuscleTargetGroup, string>;
+}
+
 export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: ClientOverviewVisualizationsProps) {
+  const updateClient = useFloor((state) => state.updateClient);
   const today = todayIso();
   const muscleActivity = useMemo(
     () => analyzeMuscleActivity(client, exerciseLibrary, 30, today),
     [client, exerciseLibrary, today],
   );
   const radarData = useMemo(() => muscleBalanceRadar(muscleActivity.muscles), [muscleActivity]);
+  const targetGuidance = useMemo(
+    () => muscleTargetGuidance(radarData, client.muscleTargets),
+    [radarData, client.muscleTargets],
+  );
   const weeklyData = useMemo(() => weeklySetPoints(client, today), [client, today]);
   const exerciseOptions = useMemo(() => strengthExerciseOptions(client, today), [client, today]);
   const [exerciseId, setExerciseId] = useState("");
+  const [targetInputs, setTargetInputs] = useState(() => targetInputValues(client.muscleTargets));
+  const [targetError, setTargetError] = useState("");
+  const [targetSaved, setTargetSaved] = useState(false);
+  useEffect(() => {
+    setTargetInputs(targetInputValues(client.muscleTargets));
+    setTargetError("");
+  }, [client.id, client.muscleTargets]);
+  useEffect(() => {
+    setTargetSaved(false);
+  }, [client.id]);
   const activeExerciseId = exerciseOptions.some((exercise) => exercise.id === exerciseId)
     ? exerciseId
     : exerciseOptions[0]?.id ?? "";
@@ -70,6 +99,25 @@ export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: 
   const missingGroups = radarData.filter((group) => group.weeklyEquivalent <= 0).map((group) => group.label);
   const activeExercise = exerciseOptions.find((exercise) => exercise.id === activeExerciseId);
   const weeklyTotal = weeklyData.reduce((total, point) => total + point.sets, 0);
+
+  function saveMuscleTargets(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const targets: Partial<Record<MuscleTargetGroup, number>> = {};
+    for (const { id, label } of MUSCLE_TARGET_GROUPS) {
+      const value = targetInputs[id].trim();
+      if (!value) continue;
+      const parsed = Number(value);
+      if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(value) || !Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+        setTargetError(`${label}: enter a weekly target from 0 to 100, or leave it blank.`);
+        setTargetSaved(false);
+        return;
+      }
+      targets[id] = parsed;
+    }
+    updateClient(client.id, { muscleTargets: Object.keys(targets).length ? targets : undefined });
+    setTargetError("");
+    setTargetSaved(true);
+  }
 
   return (
     <section aria-label="Client training analytics" className="space-y-5" data-testid="client-training-analytics">
@@ -126,6 +174,68 @@ export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: 
               {muscleActivity.unmappedExercises.length} exercise{muscleActivity.unmappedExercises.length === 1 ? "" : "s"} could not be mapped to a muscle group.
             </p>
           )}
+          <div className="mt-4 border-t border-[hsl(var(--border))] pt-4">
+            <div className="mb-3">
+              <p className="mono text-[10px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]">Trainer-defined guidance</p>
+              <h3 className="mt-1 text-sm font-semibold">Weekly muscle targets</h3>
+              <p className="mt-1 text-[11px] leading-relaxed text-[hsl(var(--muted-foreground))]">
+                Compare each target with the 30-day average. This is coaching guidance from logged workload, not a recovery or readiness measure.
+              </p>
+            </div>
+            <form className="space-y-2" onSubmit={saveMuscleTargets} noValidate>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {targetGuidance.map((group) => (
+                  <div
+                    key={group.id}
+                    className="grid grid-cols-[minmax(0,1fr)_auto_5.5rem] items-center gap-x-2 rounded-lg bg-[hsl(var(--background))] px-3 py-2"
+                    data-testid={`client-muscle-target-group-${group.id}`}
+                  >
+                    <label htmlFor={`muscle-target-${client.id}-${group.id}`} className="min-w-0 truncate text-xs font-medium">
+                      {group.label}
+                    </label>
+                    <span className="text-right text-[10px] tabular-nums text-[hsl(var(--muted-foreground))]" aria-label={`${group.weeklyEquivalent.toFixed(1)} weekly-equivalent sets recorded`}>
+                      {group.weeklyEquivalent.toFixed(1)} / wk
+                    </span>
+                    <input
+                      id={`muscle-target-${client.id}-${group.id}`}
+                      type="text"
+                      inputMode="decimal"
+                      value={targetInputs[group.id]}
+                      onChange={(event) => {
+                        setTargetInputs((current) => ({ ...current, [group.id]: event.target.value }));
+                        setTargetError("");
+                        setTargetSaved(false);
+                      }}
+                      placeholder="No target"
+                      aria-label={`${group.label} weekly target in weighted set equivalents`}
+                      className="h-9 min-w-0 rounded-md border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-2 text-xs tabular-nums text-[hsl(var(--foreground))] outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                      data-testid={`input-muscle-target-${group.id}`}
+                    />
+                    <p
+                      className={`col-span-3 mt-0.5 text-[10px] ${group.target === undefined ? "text-[hsl(var(--muted-foreground))]" : group.belowTarget ? "font-semibold text-[hsl(var(--chart-3))]" : "text-[hsl(var(--muted-foreground))]"}`}
+                      data-testid={`text-muscle-guidance-${group.id}`}
+                    >
+                      {group.target === undefined
+                        ? "No target set"
+                        : group.belowTarget
+                          ? `Below coaching target · ${group.target} / wk`
+                          : `At or above coaching target · ${group.target} / wk`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {targetError && <p role="alert" className="text-xs text-[hsl(var(--destructive))]">{targetError}</p>}
+              {targetSaved && <p role="status" className="text-xs text-[hsl(var(--muted-foreground))]">Weekly muscle targets saved for this client.</p>}
+              <button
+                type="submit"
+                className="min-h-10 rounded-lg bg-[hsl(var(--primary))] px-4 text-xs font-semibold text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))]"
+                data-testid="button-save-muscle-targets"
+              >
+                Save targets
+              </button>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))]">Targets are optional. Leave a field blank to remove that target.</p>
+            </form>
+          </div>
         </Card>
 
         <div className="space-y-5">

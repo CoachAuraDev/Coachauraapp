@@ -4,6 +4,7 @@ import type { Client, ExerciseLog, SessionLog, SetLog } from "./models.ts";
 import {
   estimatedStrengthHistory,
   muscleBalanceRadar,
+  muscleTargetGuidance,
   strengthExerciseOptions,
   weeklySetPoints,
 } from "./client-overview.ts";
@@ -98,4 +99,26 @@ test("muscle radar combines detailed mapped stimulus without adding invented val
   assert.equal(radar.find((item) => item.label === "Shoulders")?.weeklyEquivalent, 6);
   assert.equal(radar.find((item) => item.label === "Core")?.weeklyEquivalent, 5);
   assert.equal(radar.find((item) => item.label === "Glutes")?.weeklyEquivalent, 0);
+});
+
+test("muscle coaching guidance compares only explicitly configured targets", () => {
+  const radar = muscleBalanceRadar([
+    { id: "chest", weeklyEquivalent: 4 },
+    { id: "front-deltoids", weeklyEquivalent: 2 },
+    { id: "side-deltoids", weeklyEquivalent: 1 },
+    { id: "rear-deltoids", weeklyEquivalent: 1 },
+  ]);
+  const guidance = muscleTargetGuidance(radar, { chest: 5, shoulders: 4 });
+  assert.deepEqual(
+    guidance.filter((group) => group.target !== undefined).map(({ id, weeklyEquivalent, target, belowTarget }) => ({
+      id, weeklyEquivalent, target, belowTarget,
+    })),
+    [
+      { id: "chest", weeklyEquivalent: 4, target: 5, belowTarget: true },
+      { id: "shoulders", weeklyEquivalent: 4, target: 4, belowTarget: false },
+    ],
+  );
+  assert.equal(guidance.find((group) => group.id === "arms")?.target, undefined);
+  assert.equal(guidance.find((group) => group.id === "arms")?.belowTarget, false);
+  assert.equal(muscleTargetGuidance(radar).every((group) => group.target === undefined && !group.belowTarget), true);
 });

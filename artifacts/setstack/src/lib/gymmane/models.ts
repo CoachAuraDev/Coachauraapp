@@ -25,6 +25,19 @@ export type SessionLog = {
   exercises: ExerciseLog[];
 };
 
+export type MuscleTargetGroup =
+  | "chest"
+  | "shoulders"
+  | "arms"
+  | "upper-back"
+  | "lower-back"
+  | "core"
+  | "glutes"
+  | "quads"
+  | "hamstrings"
+  | "adductors"
+  | "calves";
+
 export type PlannedSet = {
   reps: number | null;
   weightKg: number | null;
@@ -60,6 +73,8 @@ export type Client = {
   routines: Routine[];
   weeklyPlan: Record<string, string>;
   bodyweight: { date: string; kg: number }[];
+  /** Optional trainer-defined weekly workload guidance, in weighted set equivalents. */
+  muscleTargets?: Partial<Record<MuscleTargetGroup, number>>;
 };
 
 export type Draft = {

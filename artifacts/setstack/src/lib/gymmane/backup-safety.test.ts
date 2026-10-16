@@ -38,6 +38,10 @@ test("TEST full nested validation rejects malformed and incompatible backups wit
     ["invalid assignment", (d) => { d.clients[0].weeklyPlan["1"] = "does-not-exist"; }],
     ["unknown routine exercise", (d) => { d.clients[0].routines[0].exerciseIds.push("unavailable"); }],
     ["unsafe identifier", (d) => { d.clients[0].id = "__proto__"; }],
+    ["negative muscle target", (d) => { d.clients[0].muscleTargets = { chest: -1 }; }],
+    ["excessive muscle target", (d) => { d.clients[0].muscleTargets = { chest: 101 }; }],
+    ["unknown muscle target", (d) => { d.clients[0].muscleTargets = { imaginary: 4 } as never; }],
+    ["non-numeric muscle target", (d) => { d.clients[0].muscleTargets = { chest: "4" } as never; }],
   ];
   for (const [name, mutate] of mutations) {
     const data = fixture();
@@ -47,7 +51,9 @@ test("TEST full nested validation rejects malformed and incompatible backups wit
   }
 });
 test("TEST version 2 roundtrip preserves exact loads, pending draft and units", () => {
-  useFloor.setState(fixture());
+  const source = fixture();
+  source.clients[0].muscleTargets = { chest: 10.5, calves: 4 };
+  useFloor.setState(source);
   const client = useFloor.getState().clients[0];
   useFloor.getState().startSession(client.id, client.routines[0].id);
   const exerciseId = useFloor.getState().draft!.exercises[0].id;
@@ -61,10 +67,25 @@ test("TEST version 2 roundtrip preserves exact loads, pending draft and units", 
     assert.equal(result.preview.hasDraft, true);
     assert.equal(result.preview.data.draft!.entries![exerciseId].weightKg, 60.625);
     assert.equal(result.preview.data.unit, "lb");
+    assert.deepEqual(result.preview.data.clients[0].muscleTargets, { chest: 10.5, calves: 4 });
   }
   useFloor.setState(fixture());
   assert.equal(useFloor.getState().importBackup(backup), "");
   assert.deepEqual(JSON.parse(useFloor.getState().exportBackup()), before);
+});
+test("TEST profiles created before targets remain unchanged and default to no guidance", () => {
+  const data = fixture();
+  const oldClient = data.clients[0];
+  delete oldClient.muscleTargets;
+  const validated = validateSavedFloor(data);
+  assert.equal(validated.clients[0].muscleTargets, undefined);
+  const restored = inspectBackup(encodeBackup(data), fixture());
+  assert.ok(restored.ok);
+  if (restored.ok) {
+    assert.equal(restored.preview.data.clients[0].muscleTargets, undefined);
+    assert.deepEqual(restored.preview.data.clients[0].sessions, oldClient.sessions);
+    assert.deepEqual(restored.preview.data.clients[0].routines, oldClient.routines);
+  }
 });
 test("TEST legacy upgrades add only documented optional fields and preserve current units", () => {
   const data = fixture();
