@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
 import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
+import { effortFactorFromRpe } from "../src/lib/gymmane/muscle-activity.ts";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
@@ -446,6 +447,100 @@ async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
   }
 }
 
+async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
+  const session = amina?.sessions.find((item) => item.id === "seed-amina-2");
+  const bench = session?.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(session, "Amina's completed effort-correction workout should exist");
+  assert.ok(bench, "The completed workout should contain a mapped bench press");
+  assert.equal(bench.sets.length, 2);
+  assert.ok(bench.sets.every((set) => set.kind === "normal" && set.rpe === 8),
+    "Both bench sets should start at RIR 2, the ×1.0 effort factor");
+
+  const snapshot = async (id) => ({
+    chest: await muscleChartSnapshot(page, baseUrl, id, "chest", 30),
+    triceps: await muscleChartSnapshot(page, baseUrl, id, "triceps", 30),
+  });
+  const before = await snapshot("seed-amina");
+  const leoBefore = await snapshot("seed-leo");
+  const originalBenchSets = structuredClone(bench.sets);
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedSession = expectedClients.find((client) => client.id === "seed-amina")
+    .sessions.find((item) => item.id === session.id);
+  const expectedBench = expectedSession.exercises.find((exercise) => exercise.id === bench.id);
+
+  // These changes cross both effort-factor boundaries (RIR 1/2 and 3/4).
+  // Each save changes only one RIR; the adjacent sets remain untouched.
+  for (const correction of [
+    { setIndex: 0, rir: 1 },
+    { setIndex: 1, rir: 4 },
+    { setIndex: 1, rir: 3 },
+  ]) {
+    const originalRpe = originalBenchSets[correction.setIndex].rpe;
+    expectedBench.sets[correction.setIndex].rpe = 10 - correction.rir;
+    const directDelta = expectedBench.sets.reduce((sum, set, index) =>
+      sum + effortFactorFromRpe(set.rpe) - effortFactorFromRpe(originalBenchSets[index].rpe), 0,
+    );
+    const secondaryDelta = directDelta * 0.5;
+
+    await openSavedSessionEditor(page, baseUrl, session.id);
+    const expanded = await page.evaluate(`(() => {
+      const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+      const toggle = section?.querySelector("button[aria-expanded]");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return !!toggle;
+    })()`);
+    assert.equal(expanded, true, "Expand the bench press RIR inputs");
+    await page.fill(
+      `input-editor-rir-${bench.sets[correction.setIndex].id}`,
+      correction.rir,
+    );
+    await page.click("button-editor-save");
+    await waitFor("saved RIR correction and closed editor", () => page.evaluate(
+      'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+    ));
+    assert.deepEqual((await storedState(page)).clients, expectedClients,
+      "An effort correction must change only the selected set's RPE (saved from RIR)");
+
+    const after = await snapshot("seed-amina");
+    for (const [muscle, delta] of [["chest", directDelta], ["triceps", secondaryDelta]]) {
+      const initial = before[muscle];
+      const actual = after[muscle];
+      assert.equal(actual.workingSets, initial.workingSets,
+        `${muscle}: overall working-set count must not change after editing RIR`);
+      assert.equal(actual.completedSessions, initial.completedSessions,
+        `${muscle}: completed-session count must not change after editing RIR`);
+      assert.equal(actual.selected.totalSets, initial.selected.totalSets,
+        `${muscle}: involved-set count must not change after editing RIR`);
+      assert.equal(actual.selected.directIndirect, initial.selected.directIndirect,
+        `${muscle}: direct and indirect set counts must not change after editing RIR`);
+      assert.equal(actual.selected.weightedSets,
+        (Number(initial.selected.weightedSets) + delta).toFixed(2),
+        `${muscle}: weighted sets must follow the exact effort factor`);
+      assert.equal(actual.selected.weeklyLoad,
+        (Number(initial.selected.weeklyLoad) + delta * 7 / 30).toFixed(2),
+        `${muscle}: 30-day weekly-equivalent load must follow the exact effort factor`);
+    }
+    assert.deepEqual(await snapshot("seed-leo"), leoBefore,
+      "Correcting Amina's effort must not change another client's charts");
+
+    await reloadAndWait(page, "reloaded RIR correction dashboard", "dashboard-muscle-activity");
+    assert.deepEqual((await storedState(page)).clients, expectedClients,
+      "The RIR-only correction must persist after reload without changing other session fields");
+    assert.deepEqual(await snapshot("seed-amina"), after,
+      "Direct and secondary weighted totals must persist after reload");
+    assert.deepEqual(await snapshot("seed-leo"), leoBefore,
+      "Another client's charts must remain unchanged after reload");
+
+    // Keep the next action's reference explicit: only the edited set may differ
+    // from its original RPE, including when the same set crosses back over a boundary.
+    assert.equal(expectedBench.sets[correction.setIndex].rpe, 10 - correction.rir);
+    assert.notEqual(expectedBench.sets[correction.setIndex].rpe, originalRpe,
+      "Each step must actually cross to a different effort factor");
+  }
+}
+
 async function switchWorkoutUnitAndReload(page, baseUrl, unit) {
   await navigate(page, `${baseUrl}/settings`, `button-unit-${unit}`);
   await page.click(`button-unit-${unit}`);
@@ -879,6 +974,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.reps, 7);
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
+  await correctSavedEffortAndVerifyCharts(page, baseUrl);
+  t.diagnostic("Effort boundaries, unchanged set counts, client isolation, and reload persistence verified");
   await correctSavedSetsAndVerifyCharts(page, baseUrl);
   t.diagnostic("Saved-set corrections verified; checking seven-day and 30-day date boundaries");
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
