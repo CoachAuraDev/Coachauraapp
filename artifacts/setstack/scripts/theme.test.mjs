@@ -118,7 +118,9 @@ test("Settings exposes exactly two fixed appearance choices and keeps the app da
   const app = read("src/App.tsx");
   const themes = read("src/lib/gymmane/appearance.ts");
   assert.match(app, /id="appearance-theme"/);
-  assert.deepEqual([...themes.matchAll(/value: "([^"]+)"/g)].map((match) => match[1]), ["orange-charcoal", "default"]);
+  assert.deepEqual([...themes.matchAll(/value: "([^"]+)"/g)].map((match) => match[1]), ["default", "orange-charcoal"]);
+  assert.match(app, /Original Lime Green is the default/);
+  assert.match(themes, /label: "Peach Theme"/);
   assert.match(app, /APPEARANCE_THEMES\.map/);
   assert.match(app, /backgroundColor:color/);
   assert.match(app, /data-testid=\{`button-appearance-\$\{theme\.value\}`\}/);

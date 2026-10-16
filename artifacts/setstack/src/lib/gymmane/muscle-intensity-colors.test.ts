@@ -55,11 +55,11 @@ test("CoachAura 7/30-day completed test workouts, empty and high workloads map w
   assert.equal(chest.directSets, 6);
   assert.equal(monthChest.directSets, 12);
   assert.equal(monthChest.weeklyEquivalent, 3.5);
-  assert.equal(coachAuraWorkloadColor(chest.weeklyEquivalent), "#C98C67");
-  assert.equal(coachAuraWorkloadColor(monthChest.weeklyEquivalent), "#A96F4B");
+  assert.equal(coachAuraWorkloadColor(chest.weeklyEquivalent, "orange-charcoal"), "#C98C67");
+  assert.equal(coachAuraWorkloadColor(monthChest.weeklyEquivalent, "orange-charcoal"), "#A96F4B");
   assert.deepEqual(week.muscles.map((m) => m.recoveryStatus), month.muscles.map((m) => m.recoveryStatus));
   const high = analyzeMuscleActivity(client([session("2026-10-11", 80)]), kExercises, 30, "2026-10-11");
-  assert.equal(coachAuraWorkloadColor(high.muscles.find((m) => m.id === "chest")!.weeklyEquivalent), "#E8A87C");
+  assert.equal(coachAuraWorkloadColor(high.muscles.find((m) => m.id === "chest")!.weeklyEquivalent, "orange-charcoal"), "#E8A87C");
   const empty = analyzeMuscleActivity(client([]), kExercises, 7, "2026-10-11");
   assert.ok(empty.muscles.every((m) => coachAuraWorkloadColor(m.weeklyEquivalent) === "#35353B"));
   assert.equal(JSON.stringify(c), before);
@@ -85,7 +85,7 @@ test("only the orange-peach and original lime workload palettes use the unchange
   assert.equal(intensityForWeeklyEquivalent(3), "moderate");
   assert.equal(intensityForWeeklyEquivalent(6), "high");
   assert.equal(intensityForWeeklyEquivalent(10), "very-high");
-  assert.equal(coachAuraWorkloadColor(10), "#E8A87C");
+  assert.equal(coachAuraWorkloadColor(10, "orange-charcoal"), "#E8A87C");
   assert.equal(coachAuraWorkloadColor(10, "default"), "#C6FF57");
   assert.deepEqual(workloadLegendForAppearance("default").map((entry) => entry.label),
     ["Inactive", "Very low", "Low", "Moderate", "High", "Very high"]);

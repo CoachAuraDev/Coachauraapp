@@ -243,7 +243,7 @@ function SettingsPage() {
        <div className="space-y-5">
          <Card className="p-5 sm:p-6">
            <SectionTitle kicker="Display preferences" title="Appearance"/>
-             <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose between CoachAura's two fixed dark themes. Dark Soft Orange / Black Peach is the default. Your choice is saved on this device.</p>
+               <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose Original Lime Green or Peach Theme. Original Lime Green is the default. Your choice is saved on this device.</p>
              <p id="appearance-theme-label" className={`${labelClass} mb-2`}>Theme</p>
             <div id="appearance-theme" role="group" aria-labelledby="appearance-theme-label" aria-describedby="appearance-theme-help" className="grid gap-2 sm:grid-cols-2" data-testid="select-appearance">
               {APPEARANCE_THEMES.map((theme)=>(

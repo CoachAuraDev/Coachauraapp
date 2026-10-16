@@ -1,20 +1,20 @@
 export const APPEARANCE_THEMES = [
   {
-    value: "orange-charcoal",
-    label: "Dark Soft Orange / Black Peach",
-    mode: "Dark",
-    swatches: ["#111214", "#1B1C1F", "#E8A87C"],
-  },
-  {
     value: "default",
-    label: "Original Theme",
+    label: "Original Lime Green",
     mode: "Dark",
     swatches: ["#0B0B0D", "#17171B", "#B7F34A"],
+  },
+  {
+    value: "orange-charcoal",
+    label: "Peach Theme",
+    mode: "Dark",
+    swatches: ["#111214", "#1B1C1F", "#E8A87C"],
   },
 ] as const;
 
 export type AppearanceTheme = (typeof APPEARANCE_THEMES)[number]["value"];
-export const DEFAULT_APPEARANCE: AppearanceTheme = "orange-charcoal";
+export const DEFAULT_APPEARANCE: AppearanceTheme = "default";
 
 export function isAppearanceTheme(value: unknown): value is AppearanceTheme {
   return APPEARANCE_THEMES.some((theme) => theme.value === value);

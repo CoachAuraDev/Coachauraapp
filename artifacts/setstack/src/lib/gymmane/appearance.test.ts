@@ -4,17 +4,17 @@ import { DEFAULT_APPEARANCE, APPEARANCE_THEMES, isAppearanceTheme, normalizeSave
 import { useFloor } from "./store.ts";
 import { encodeBackup, inspectBackup, validateSavedFloor } from "./backup.ts";
 
-test("only the two dark CoachAura themes are offered and new installations default to orange", () => {
-  assert.equal(DEFAULT_APPEARANCE, "orange-charcoal");
+test("only the two dark CoachAura themes are offered and new installations default to Original Lime Green", () => {
+  assert.equal(DEFAULT_APPEARANCE, "default");
   assert.deepEqual(APPEARANCE_THEMES.map((item) => item.value), [
-    "orange-charcoal", "default",
+    "default", "orange-charcoal",
   ]);
   assert.ok(APPEARANCE_THEMES.every((item) => item.swatches.length === 3));
   assert.deepEqual(APPEARANCE_THEMES.map((item) => item.label), [
-    "Dark Soft Orange / Black Peach", "Original Theme",
+    "Original Lime Green", "Peach Theme",
   ]);
-  assert.deepEqual(APPEARANCE_THEMES[0]?.swatches, ["#111214", "#1B1C1F", "#E8A87C"]);
-  assert.deepEqual(APPEARANCE_THEMES[1]?.swatches, ["#0B0B0D", "#17171B", "#B7F34A"]);
+  assert.deepEqual(APPEARANCE_THEMES[0]?.swatches, ["#0B0B0D", "#17171B", "#B7F34A"]);
+  assert.deepEqual(APPEARANCE_THEMES[1]?.swatches, ["#111214", "#1B1C1F", "#E8A87C"]);
   assert.equal(isAppearanceTheme("orange-charcoal"), true);
   assert.equal(isAppearanceTheme("default"), true);
   assert.equal(isAppearanceTheme("orange-light-grey"), false);
@@ -27,6 +27,7 @@ test("only the two dark CoachAura themes are offered and new installations defau
   };
   assert.equal(validateSavedFloor(oldShape).appearance, DEFAULT_APPEARANCE);
   assert.equal(validateSavedFloor({ ...oldShape, appearance: "default" }).appearance, "default");
+  assert.equal(validateSavedFloor({ ...oldShape, appearance: "orange-charcoal" }).appearance, "orange-charcoal");
   assert.equal(validateSavedFloor({ ...oldShape, appearance: "orange-light-grey" }).appearance, "orange-charcoal");
   assert.equal(validateSavedFloor({ ...oldShape, appearance: "light-lime-charcoal" }).appearance, "default");
   assert.equal(validateSavedFloor({ ...oldShape, appearance: "light-lime-grey" }).appearance, "default");
