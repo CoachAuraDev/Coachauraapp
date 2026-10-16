@@ -243,8 +243,8 @@ function SettingsPage() {
        <div className="space-y-5">
          <Card className="p-5 sm:p-6">
            <SectionTitle kicker="Display preferences" title="Appearance"/>
-            <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose a palette for the workspace. Original keeps CoachAura's current colours. Your choice is saved on this device.</p>
-            <p id="appearance-theme-label" className={`${labelClass} mb-2`}>Color theme</p>
+             <p id="appearance-theme-help" className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose between CoachAura's two fixed dark themes. Dark Soft Orange / Black Peach is the default. Your choice is saved on this device.</p>
+             <p id="appearance-theme-label" className={`${labelClass} mb-2`}>Theme</p>
             <div id="appearance-theme" role="group" aria-labelledby="appearance-theme-label" aria-describedby="appearance-theme-help" className="grid gap-2 sm:grid-cols-2" data-testid="select-appearance">
               {APPEARANCE_THEMES.map((theme)=>(
                 <button
@@ -316,9 +316,8 @@ function WorkspaceApp() {
     const root=document.documentElement;
     if(appearance==="default")delete root.dataset.appearance;
     else root.dataset.appearance=appearance;
-    const lightTheme=appearance==="orange-light-grey"||appearance==="light-lime-grey";
-    root.classList.toggle("dark",!lightTheme);
-    const themeColor=appearance==="orange-light-grey"?"#F2F3F5":appearance==="light-lime-grey"?"#F2F4EF":appearance==="orange-charcoal"?"#111214":appearance==="light-lime-charcoal"?"#151619":"#0B0B0D";
+    root.classList.add("dark");
+    const themeColor=appearance==="orange-charcoal"?"#111214":"#0B0B0D";
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content",themeColor);
   },[appearance,health.phase]);
   useEffect(()=>{void initializePlayBilling();},[]);

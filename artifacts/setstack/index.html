@@ -8,26 +8,15 @@
       try {
         const saved = JSON.parse(localStorage.getItem("setstack-v1") || "null");
         const appearance = saved?.state?.appearance;
-        const supportedAppearances = [
-          "orange-charcoal",
-          "orange-light-grey",
-          "light-lime-charcoal",
-          "light-lime-grey",
-        ];
+        const supportedAppearances = ["default", "orange-charcoal"];
         if (supportedAppearances.includes(appearance)) {
           const root = document.documentElement;
-          const lightTheme = appearance === "orange-light-grey" || appearance === "light-lime-grey";
-          root.dataset.appearance = appearance;
-          root.classList.toggle("dark", !lightTheme);
+          if (appearance === "default") delete root.dataset.appearance;
+          else root.dataset.appearance = appearance;
+          root.classList.add("dark");
           document.querySelector('meta[name="theme-color"]')?.setAttribute(
             "content",
-            appearance === "orange-light-grey"
-              ? "#F2F3F5"
-              : appearance === "light-lime-grey"
-                ? "#F2F4EF"
-                : appearance === "orange-charcoal"
-                  ? "#111214"
-                  : "#151619",
+            appearance === "orange-charcoal" ? "#111214" : "#0B0B0D",
           );
         }
       } catch {
@@ -39,10 +28,6 @@
       html{color-scheme:dark}
       html,body,#root{background:#0B0B0D;color:#F5F5F7}
       html[data-appearance="orange-charcoal"],html[data-appearance="orange-charcoal"] body,html[data-appearance="orange-charcoal"] #root{background:#111214;color:#F4F4F5}
-      html[data-appearance="orange-light-grey"],html[data-appearance="orange-light-grey"] body,html[data-appearance="orange-light-grey"] #root{background:#F2F3F5;color:#1D1D20}
-      html[data-appearance="light-lime-charcoal"],html[data-appearance="light-lime-charcoal"] body,html[data-appearance="light-lime-charcoal"] #root{background:#151619;color:#F5F6F2}
-      html[data-appearance="light-lime-grey"],html[data-appearance="light-lime-grey"] body,html[data-appearance="light-lime-grey"] #root{background:#F2F4EF;color:#20221D}
-      html[data-appearance="orange-light-grey"],html[data-appearance="light-lime-grey"]{color-scheme:light}
       body{margin:0}#root{min-height:100dvh}
     </style>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />

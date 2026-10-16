@@ -3,11 +3,11 @@ name: CoachAura dark-first design
 description: The user's standing visual direction for the trainer app.
 ---
 
-CoachAura should default to dark mode, including first launch, regardless of the Android device's system theme. Use near-black and charcoal surfaces, readable off-white/grey text and restrained electric-green accents for actions, selected tabs and progress. Avoid white startup and transition flashes.
+CoachAura has two fixed dark themes: Dark Soft Orange / Black Peach is the default, with #E8A87C accents; Original Theme retains the lime accent #B7F34A. Both use near-black and charcoal surfaces with readable off-white/grey text. Do not follow the Android system theme or show white startup flashes.
 
-**Why:** The user requested a consistent, polished dark-first design while preserving features and client data.
+**Why:** The user requested only these two themes, with orange/peach as the default and the original lime theme retained as the sole alternative.
 
-**How to apply:** Extend the existing shared theme when adding screens and dialogs. Check web startup and native Android backgrounds together; do not automatically switch the app to light mode based on device preferences.
+**How to apply:** Keep the selector limited to these palettes and bind screens, dialogs, charts and status highlights to the selected theme. Preserve a valid saved choice and do not automatically switch to light mode based on device preferences.
 
 Phone-layout checks should include realistic long client names and unbroken identifiers, not just the short demo roster.
 

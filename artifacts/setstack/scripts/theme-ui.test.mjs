@@ -13,7 +13,7 @@ import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
 const clientId = "seed-amina";
-const appearances = ["default", "orange-charcoal", "orange-light-grey", "light-lime-charcoal", "light-lime-grey"];
+const appearances = ["default", "orange-charcoal"];
 const themeSwatches = new Map();
 
 async function availablePort() {
@@ -195,7 +195,7 @@ async function assertAppearance(page, expected) {
       appearance: document.documentElement.dataset.appearance ?? "default",
       dark: document.documentElement.classList.contains("dark")
     })`),
-    (value) => value.appearance === expected && value.dark === !["orange-light-grey", "light-lime-grey"].includes(expected),
+    (value) => value.appearance === expected && value.dark,
   );
   assert.equal(actual.appearance, expected);
 }
@@ -661,6 +661,11 @@ async function exerciseWorkout(page, baseUrl) {
 
 async function changeThemeAndReload(page, baseUrl, nextAppearance, savedClients) {
   await navigate(page, `${baseUrl}/settings`, "select-appearance");
+  assert.equal(
+    await page.evaluate('document.querySelectorAll(\'[data-testid^="button-appearance-"]\').length'),
+    2,
+    "Settings should expose only the two fixed themes",
+  );
   await page.click(`button-appearance-${nextAppearance}`);
   await assertAppearance(page, nextAppearance);
   await navigate(page, `${baseUrl}/clients/${clientId}`, "panel-workout-logger");
@@ -808,10 +813,7 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   }
 
   assert.equal(themeSwatches.size, appearances.length, "Each supported appearance should have been checked");
-  assert.equal(themeSwatches.get("default"), themeSwatches.get("light-lime-charcoal"), "The charcoal lime theme reuses CoachAura's existing dark muscle scale");
   assert.notEqual(themeSwatches.get("orange-charcoal"), themeSwatches.get("default"));
-  assert.notEqual(themeSwatches.get("orange-light-grey"), themeSwatches.get("default"));
-  assert.notEqual(themeSwatches.get("light-lime-grey"), themeSwatches.get("default"));
   await page.click("button-finish-session");
   await waitFor("final workout completion", () => page.evaluate(
     'document.querySelector(\'[data-testid="panel-workout-logger"]\') === null',

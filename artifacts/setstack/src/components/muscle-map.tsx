@@ -209,7 +209,7 @@ export function MuscleMap({
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-[11px] leading-relaxed text-[var(--muscle-map-muted)]">Weighted sets/week. The low band blends {appearance.startsWith("orange") ? "through the orange scale" : appearance === "light-lime-grey" ? "from light to deep lime" : "from olive to lime"} below 3; no thresholds have changed. Colours show workload, not biological recovery.</p>
+      <p className="mt-3 text-[11px] leading-relaxed text-[var(--muscle-map-muted)]">Weighted sets/week. The low band blends {appearance === "orange-charcoal" ? "through orange and peach tones" : "from olive to lime"} below 3; no thresholds have changed. Colours show workload, not biological recovery.</p>
     </div>
   );
 }

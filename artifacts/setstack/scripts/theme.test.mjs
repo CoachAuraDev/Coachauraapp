@@ -72,24 +72,19 @@ test("key text combinations meet WCAG AA normal-text contrast", () => {
   }
 });
 
-test("all optional palettes retain readable tokens and keep the default palette separate", () => {
-  const charcoal = tokens(':root[data-appearance="orange-charcoal"]');
-  const orangeLight = tokens(':root[data-appearance="orange-light-grey"]');
-  const limeCharcoal = tokens(':root[data-appearance="light-lime-charcoal"]');
-  const limeLight = tokens(':root[data-appearance="light-lime-grey"]');
+test("the two supported themes stay dark, use their exact accents, and meet contrast targets", () => {
+  const orange = tokens(':root[data-appearance="orange-charcoal"]');
+  const original = tokens(":root");
   const css = read("src/index.css");
   assert.match(css, /:root\[data-appearance="orange-charcoal"\]\s*\{\s*color-scheme:\s*dark;/);
-  assert.match(css, /:root\[data-appearance="orange-light-grey"\]\s*\{\s*color-scheme:\s*light;/);
-  assert.match(css, /:root\[data-appearance="light-lime-charcoal"\]\s*\{\s*color-scheme:\s*dark;/);
-  assert.match(css, /:root\[data-appearance="light-lime-grey"\]\s*\{\s*color-scheme:\s*light;/);
-  assert.equal(charcoal["--primary"], charcoal["--chart-1"]);
-  assert.equal(orangeLight["--primary"], orangeLight["--chart-1"]);
-  assert.equal(limeCharcoal["--primary"], limeCharcoal["--chart-1"]);
-  assert.notEqual(charcoal["--primary"], tokens(":root")["--primary"]);
-  assert.notEqual(orangeLight["--background"], tokens(":root")["--background"]);
-  assert.notEqual(limeCharcoal["--background"], tokens(":root")["--background"]);
-  assert.notEqual(limeLight["--background"], tokens(":root")["--background"]);
-  for (const theme of [charcoal, orangeLight, limeCharcoal, limeLight]) {
+  assert.equal(hex(orange["--primary"]), "#E8A87C");
+  assert.equal(hex(orange["--chart-1"]), "#E8A87C");
+  assert.equal(orange["--muscle-map-highlight"], "#E8A87C");
+  assert.equal(hex(original["--primary"]), "#B7F34A");
+  assert.equal(hex(original["--background"]), "#0B0B0D");
+  assert.equal(hex(orange["--background"]), "#111214");
+  assert.doesNotMatch(css, /data-appearance="(?:orange-light-grey|light-lime-charcoal|light-lime-grey)"/);
+  for (const theme of [orange, original]) {
     for (const [foreground, background] of [
       ["--foreground", "--background"], ["--foreground", "--card"],
       ["--muted-foreground", "--card"], ["--primary-foreground", "--primary"],
@@ -98,10 +93,8 @@ test("all optional palettes retain readable tokens and keep the default palette 
     }
     assert.ok(contrast(theme["--chart-1"], theme["--card"]) >= 3, "chart line on card");
   }
-  for (const theme of [limeCharcoal, limeLight]) {
-    assert.ok(contrast(theme["--primary-foreground"], theme["--primary"]) >= 4.5,
-      "dark button text on bright lime primary actions");
-  }
+  assert.ok(contrast(orange["--primary-foreground"], orange["--primary"]) >= 4.5,
+    "dark button text on the soft orange primary");
 });
 
 test("startup explicitly opts into dark before JavaScript and native system-theme detection", () => {
@@ -110,9 +103,8 @@ test("startup explicitly opts into dark before JavaScript and native system-them
   assert.match(html, /name="color-scheme" content="dark light"/);
   assert.match(html, /html,body,#root\{background:#0B0B0D;color:#F5F5F7\}/);
   assert.match(html, /localStorage\.getItem\("setstack-v1"\)/);
-  assert.match(html, /orange-light-grey/);
-  assert.match(html, /light-lime-charcoal/);
-  assert.match(html, /light-lime-grey/);
+  assert.match(html, /supportedAppearances = \["default", "orange-charcoal"\]/);
+  assert.doesNotMatch(html, /orange-light-grey|light-lime-charcoal|light-lime-grey/);
   const native = read("capacitor.config.ts");
   assert.equal((native.match(/backgroundColor: "#0B0B0D"/g) ?? []).length, 2);
   assert.match(native, /style: "DARK"/);
@@ -122,18 +114,16 @@ test("startup explicitly opts into dark before JavaScript and native system-them
   assert.match(read("android/app/src/main/res/values/colors.xml"), /name="setstack_background">#0B0B0D/);
 });
 
-test("Settings exposes all five appearance choices and applies the selected root mode after hydration", () => {
+test("Settings exposes exactly two fixed appearance choices and keeps the app dark after hydration", () => {
   const app = read("src/App.tsx");
   const themes = read("src/lib/gymmane/appearance.ts");
   assert.match(app, /id="appearance-theme"/);
-  for (const theme of ["default", "orange-charcoal", "orange-light-grey", "light-lime-charcoal", "light-lime-grey"]) {
-    assert.match(themes, new RegExp(`value: "${theme}"`));
-  }
+  assert.deepEqual([...themes.matchAll(/value: "([^"]+)"/g)].map((match) => match[1]), ["orange-charcoal", "default"]);
   assert.match(app, /APPEARANCE_THEMES\.map/);
   assert.match(app, /backgroundColor:color/);
   assert.match(app, /data-testid=\{`button-appearance-\$\{theme\.value\}`\}/);
   assert.match(app, /setAppearance\(theme\.value\)/);
-  assert.match(app, /root\.classList\.toggle\("dark",!lightTheme\)/);
+  assert.match(app, /root\.classList\.add\("dark"\)/);
 });
 
 test("screen transitions do not retain a transformed container around fixed dialogs", () => {

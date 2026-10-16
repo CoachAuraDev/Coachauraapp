@@ -21,24 +21,24 @@ const client = (sessions: SessionLog[]): Client => ({ id: "TEST-client", name: "
 test("CoachAura workload colours respect the unchanged 3/6/10 boundaries and all six palette stops", () => {
   assert.deepEqual(COACHAURA_WORKLOAD_LEGEND.map((s) => s.color),
     ["#35353B", "#45521F", "#667F25", "#86B832", "#A5E635", "#C6FF57"]);
-  assert.equal(coachAuraWorkloadColor(0), "#35353B");
-  assert.equal(coachAuraWorkloadColor(Number.EPSILON), "#45521F");
-  assert.equal(coachAuraWorkloadColor(2.999999), "#667F25");
-  assert.equal(coachAuraWorkloadColor(3), "#86B832");
-  assert.equal(coachAuraWorkloadColor(5.99999), "#86B832");
-  assert.equal(coachAuraWorkloadColor(6), "#A5E635");
-  assert.equal(coachAuraWorkloadColor(9.99999), "#A5E635");
-  assert.equal(coachAuraWorkloadColor(10), "#C6FF57");
-  assert.equal(coachAuraWorkloadColor(100), "#C6FF57");
-  assert.equal(coachAuraWorkloadColor(NaN), "#35353B");
-  assert.equal(coachAuraWorkloadColor(-1), "#35353B");
+  assert.equal(coachAuraWorkloadColor(0, "default"), "#35353B");
+  assert.equal(coachAuraWorkloadColor(Number.EPSILON, "default"), "#45521F");
+  assert.equal(coachAuraWorkloadColor(2.999999, "default"), "#667F25");
+  assert.equal(coachAuraWorkloadColor(3, "default"), "#86B832");
+  assert.equal(coachAuraWorkloadColor(5.99999, "default"), "#86B832");
+  assert.equal(coachAuraWorkloadColor(6, "default"), "#A5E635");
+  assert.equal(coachAuraWorkloadColor(9.99999, "default"), "#A5E635");
+  assert.equal(coachAuraWorkloadColor(10, "default"), "#C6FF57");
+  assert.equal(coachAuraWorkloadColor(100, "default"), "#C6FF57");
+  assert.equal(coachAuraWorkloadColor(NaN, "default"), "#35353B");
+  assert.equal(coachAuraWorkloadColor(-1, "default"), "#35353B");
   assert.deepEqual([0, .001, 2.99, 3, 6, 10].map(intensityForWeeklyEquivalent),
     ["none", "low", "low", "moderate", "high", "very-high"]);
   const brightness = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
     .reduce((sum, channel, i) => sum + channel * [.2126, .7152, .0722][i]!, 0);
-  let previous = brightness(coachAuraWorkloadColor(0));
+  let previous = brightness(coachAuraWorkloadColor(0, "default"));
   for (let i = 1; i <= 110; i++) {
-    const current = brightness(coachAuraWorkloadColor(i / 10));
+    const current = brightness(coachAuraWorkloadColor(i / 10, "default"));
     assert.ok(current >= previous);
     previous = current;
   }
@@ -55,11 +55,11 @@ test("CoachAura 7/30-day completed test workouts, empty and high workloads map w
   assert.equal(chest.directSets, 6);
   assert.equal(monthChest.directSets, 12);
   assert.equal(monthChest.weeklyEquivalent, 3.5);
-  assert.equal(coachAuraWorkloadColor(chest.weeklyEquivalent), "#A5E635");
-  assert.equal(coachAuraWorkloadColor(monthChest.weeklyEquivalent), "#86B832");
+  assert.equal(coachAuraWorkloadColor(chest.weeklyEquivalent), "#C98C67");
+  assert.equal(coachAuraWorkloadColor(monthChest.weeklyEquivalent), "#A96F4B");
   assert.deepEqual(week.muscles.map((m) => m.recoveryStatus), month.muscles.map((m) => m.recoveryStatus));
   const high = analyzeMuscleActivity(client([session("2026-10-11", 80)]), kExercises, 30, "2026-10-11");
-  assert.equal(coachAuraWorkloadColor(high.muscles.find((m) => m.id === "chest")!.weeklyEquivalent), "#C6FF57");
+  assert.equal(coachAuraWorkloadColor(high.muscles.find((m) => m.id === "chest")!.weeklyEquivalent), "#E8A87C");
   const empty = analyzeMuscleActivity(client([]), kExercises, 7, "2026-10-11");
   assert.ok(empty.muscles.every((m) => coachAuraWorkloadColor(m.weeklyEquivalent) === "#35353B"));
   assert.equal(JSON.stringify(c), before);
@@ -79,27 +79,16 @@ test("CoachAura front/back and labelled buttons share workload mapping while sel
   assert.ok(ui.includes('weighted sets/week'));
 });
 
-test("orange appearances only change the workload palette, not its values or thresholds", () => {
-  const dark = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "orange-charcoal"));
-  const light = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "orange-light-grey"));
-  assert.deepEqual(dark, ["#35353B", "#572B13", "#874212", "#B9540D", "#E66F18", "#FF993D"]);
-  assert.deepEqual(light, ["#D5D5DB", "#F5D3B8", "#EEAF79", "#D98035", "#B95006", "#873700"]);
+test("only the orange-peach and original lime workload palettes use the unchanged thresholds", () => {
+  const orange = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "orange-charcoal"));
+  assert.deepEqual(orange, ["#35353B", "#573A2A", "#80543A", "#A96F4B", "#C98C67", "#E8A87C"]);
   assert.equal(intensityForWeeklyEquivalent(3), "moderate");
   assert.equal(intensityForWeeklyEquivalent(6), "high");
   assert.equal(intensityForWeeklyEquivalent(10), "very-high");
+  assert.equal(coachAuraWorkloadColor(10), "#E8A87C");
   assert.equal(coachAuraWorkloadColor(10, "default"), "#C6FF57");
-});
-
-test("light-lime appearances use lime workload colours without changing the thresholds", () => {
-  const dark = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "light-lime-charcoal"));
-  const light = [0, Number.EPSILON, 2.99999, 3, 6, 10].map((value) => coachAuraWorkloadColor(value, "light-lime-grey"));
-  assert.deepEqual(dark, ["#35353B", "#45521F", "#667F25", "#86B832", "#A5E635", "#C6FF57"]);
-  assert.deepEqual(light, ["#D5D9D1", "#E3EDCA", "#C9DE91", "#A9CF56", "#79A91C", "#466B0C"]);
-  assert.deepEqual(workloadLegendForAppearance("light-lime-grey").map((entry) => entry.label),
+  assert.deepEqual(workloadLegendForAppearance("default").map((entry) => entry.label),
     ["Inactive", "Very low", "Low", "Moderate", "High", "Very high"]);
-  assert.equal(intensityForWeeklyEquivalent(3), "moderate");
-  assert.equal(intensityForWeeklyEquivalent(6), "high");
-  assert.equal(intensityForWeeklyEquivalent(10), "very-high");
 });
 
 test("all six exact CoachAura colour anchors and unchanged source thresholds", () => {

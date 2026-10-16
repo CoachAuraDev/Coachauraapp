@@ -1,7 +1,7 @@
 // Presentation only: workload values, original heat thresholds and recovery are unchanged.
 import { lerpColor } from "./original-muscle-analytics.ts";
 import { intensityForWeeklyEquivalent } from "./muscle-activity.ts";
-import type { AppearanceTheme } from "./appearance.ts";
+import { DEFAULT_APPEARANCE, type AppearanceTheme } from "./appearance.ts";
 
 /** CoachAura's existing weekly-equivalent categories; olive→lime is presentation
  * within the low band only, not an additional calculation or recovery category.
@@ -15,41 +15,20 @@ export const COACHAURA_WORKLOAD_LEGEND = [
   { label: "Very high", marker: "≥10", color: "#C6FF57" },
 ] as const;
 
-const ORANGE_WORKLOAD_LEGENDS = {
-  "orange-charcoal": [
-    { label: "Inactive", marker: "0", color: "#35353B" },
-    { label: "Very low", marker: "Near 0", color: "#572B13" },
-    { label: "Low", marker: "<3", color: "#874212" },
-    { label: "Moderate", marker: "3–<6", color: "#B9540D" },
-    { label: "High", marker: "6–<10", color: "#E66F18" },
-    { label: "Very high", marker: "≥10", color: "#FF993D" },
-  ],
-  "orange-light-grey": [
-    { label: "Inactive", marker: "0", color: "#D5D5DB" },
-    { label: "Very low", marker: "Near 0", color: "#F5D3B8" },
-    { label: "Low", marker: "<3", color: "#EEAF79" },
-    { label: "Moderate", marker: "3–<6", color: "#D98035" },
-    { label: "High", marker: "6–<10", color: "#B95006" },
-    { label: "Very high", marker: "≥10", color: "#873700" },
-  ],
-} as const;
-
-const LIME_LIGHT_WORKLOAD_LEGEND = [
-  { label: "Inactive", marker: "0", color: "#D5D9D1" },
-  { label: "Very low", marker: "Near 0", color: "#E3EDCA" },
-  { label: "Low", marker: "<3", color: "#C9DE91" },
-  { label: "Moderate", marker: "3–<6", color: "#A9CF56" },
-  { label: "High", marker: "6–<10", color: "#79A91C" },
-  { label: "Very high", marker: "≥10", color: "#466B0C" },
+const ORANGE_WORKLOAD_LEGEND = [
+  { label: "Inactive", marker: "0", color: "#35353B" },
+  { label: "Very low", marker: "Near 0", color: "#573A2A" },
+  { label: "Low", marker: "<3", color: "#80543A" },
+  { label: "Moderate", marker: "3–<6", color: "#A96F4B" },
+  { label: "High", marker: "6–<10", color: "#C98C67" },
+  { label: "Very high", marker: "≥10", color: "#E8A87C" },
 ] as const;
 
 export function workloadLegendForAppearance(appearance: AppearanceTheme) {
-  if (appearance === "default" || appearance === "light-lime-charcoal") return COACHAURA_WORKLOAD_LEGEND;
-  if (appearance === "light-lime-grey") return LIME_LIGHT_WORKLOAD_LEGEND;
-  return ORANGE_WORKLOAD_LEGENDS[appearance];
+  return appearance === "orange-charcoal" ? ORANGE_WORKLOAD_LEGEND : COACHAURA_WORKLOAD_LEGEND;
 }
 
-export function coachAuraWorkloadColor(weeklyEquivalent: number, appearance: AppearanceTheme = "default"): string {
+export function coachAuraWorkloadColor(weeklyEquivalent: number, appearance: AppearanceTheme = DEFAULT_APPEARANCE): string {
   const palette = workloadLegendForAppearance(appearance);
   if (!Number.isFinite(weeklyEquivalent) || weeklyEquivalent <= 0) return palette[0].color;
   const intensity = intensityForWeeklyEquivalent(weeklyEquivalent);

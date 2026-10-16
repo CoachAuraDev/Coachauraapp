@@ -2,7 +2,7 @@ import type { CatalogExercise } from "./catalog.ts";
 import { kExercises } from "./catalog.ts";
 import { fromDisplay, SET_KINDS, type Unit } from "./engine.ts";
 import type { Client, Draft, Routine } from "./models.ts";
-import { DEFAULT_APPEARANCE, isAppearanceTheme, type AppearanceTheme } from "./appearance.ts";
+import { normalizeSavedAppearance, type AppearanceTheme } from "./appearance.ts";
 
 export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
 export type SavedFloor = {
@@ -122,8 +122,7 @@ function routines(v: unknown, path: string): Routine[] {
 export function validateSavedFloor(value: unknown): SavedFloor {
   const floor = record(structuredClone(value), "workspace");
   if (floor.unit !== "kg" && floor.unit !== "lb") throw new Error("workspace.unit: expected kg or lb.");
-  const appearance = floor.appearance ?? DEFAULT_APPEARANCE;
-  if (!isAppearanceTheme(appearance)) throw new Error("workspace.appearance: unsupported theme.");
+  const appearance = normalizeSavedAppearance(floor.appearance);
   const custom = objects(floor.custom === undefined ? [] : floor.custom, "custom").map((e, i) => {
     const p = `custom[${i}]`;
     for (const key of ["name", "primary", "equipment", "difficulty"]) text(e[key], `${p}.${key}`);

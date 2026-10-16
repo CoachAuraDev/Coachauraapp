@@ -1,5 +1,5 @@
 - [CoachAura commercial intent](setstack-business-intent.md) — renamed from SetStack; trainer-facing Android APK intended for a 399 SEK one-off lifetime purchase.
-- [CoachAura dark-first design](setstack-dark-first.md) — default dark regardless of Android system theme; restrained green accents and no white startup flashes.
+- [CoachAura dark-first design](setstack-dark-first.md) — two fixed dark themes; orange/peach is the default and original lime is the only alternative.
 - [Unfinished workout safety](unfinished-workout-safety.md) — trainer shortcuts must protect the current workout when switching clients.
 - [Fast logging safety](workout-logging-safety.md) — protect pending inputs and exact loads; independent template assignments; foreground-only rest alerts.
 - [Browser persistence fixtures](browser-persistence-fixtures.md) — seed test storage once; unconditional init scripts reset records on reload.

@@ -1,33 +1,15 @@
 export const APPEARANCE_THEMES = [
   {
+    value: "orange-charcoal",
+    label: "Dark Soft Orange / Black Peach",
+    mode: "Dark",
+    swatches: ["#111214", "#1B1C1F", "#E8A87C"],
+  },
+  {
     value: "default",
-    label: "Original",
+    label: "Original Theme",
     mode: "Dark",
     swatches: ["#0B0B0D", "#17171B", "#B7F34A"],
-  },
-  {
-    value: "orange-charcoal",
-    label: "Orange & Charcoal",
-    mode: "Dark",
-    swatches: ["#111214", "#1B1C1F", "#F58C2D"],
-  },
-  {
-    value: "orange-light-grey",
-    label: "Orange & Light Grey",
-    mode: "Light",
-    swatches: ["#F2F3F5", "#FFFFFF", "#C65208"],
-  },
-  {
-    value: "light-lime-charcoal",
-    label: "Light Lime & Charcoal",
-    mode: "Dark",
-    swatches: ["#151619", "#202124", "#C6FF57"],
-  },
-  {
-    value: "light-lime-grey",
-    label: "Light Lime & Grey",
-    mode: "Light",
-    swatches: ["#F2F4EF", "#FFFFFF", "#92D831"],
   },
 ] as const;
 
@@ -36,4 +18,13 @@ export const DEFAULT_APPEARANCE: AppearanceTheme = "orange-charcoal";
 
 export function isAppearanceTheme(value: unknown): value is AppearanceTheme {
   return APPEARANCE_THEMES.some((theme) => theme.value === value);
+}
+
+/** Map preferences written by the removed palettes onto the closest remaining theme. */
+export function normalizeSavedAppearance(value: unknown): AppearanceTheme {
+  if (value == null) return DEFAULT_APPEARANCE;
+  if (isAppearanceTheme(value)) return value;
+  if (value === "orange-light-grey") return "orange-charcoal";
+  if (value === "light-lime-charcoal" || value === "light-lime-grey") return "default";
+  throw new Error("workspace.appearance: unsupported theme.");
 }
