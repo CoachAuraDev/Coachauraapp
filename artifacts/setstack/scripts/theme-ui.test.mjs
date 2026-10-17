@@ -904,9 +904,13 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
   assert.ok(bench.sets.every((set) => set.kind === "normal" && set.rpe === 8),
     "Both bench sets should start at RIR 2, the ×1.0 effort factor");
 
-  const snapshot = async (id) => ({
-    chest: await muscleChartSnapshot(page, baseUrl, id, "chest", 30),
-    triceps: await muscleChartSnapshot(page, baseUrl, id, "triceps", 30),
+  const snapshot = async (id, period = 30) => ({
+    chest: await muscleChartSnapshot(page, baseUrl, id, "chest", period),
+    triceps: await muscleChartSnapshot(page, baseUrl, id, "triceps", period),
+  });
+  const snapshotBothPeriods = async (id) => ({
+    7: await snapshot(id, 7),
+    30: await snapshot(id, 30),
   });
   const before = await snapshot("seed-amina");
   const leoBefore = await snapshot("seed-leo");
@@ -986,7 +990,12 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
       "Each step must actually cross to a different effort factor");
   }
 
-  const beforeClear = await snapshot("seed-amina");
+  const sessionAgeDays = Math.floor(
+    (Date.parse(`${todayIso()}T00:00:00Z`) - Date.parse(`${session.date}T00:00:00Z`)) / 86_400_000,
+  );
+  assert.ok(sessionAgeDays >= 0 && sessionAgeDays < 7,
+    "The effort-correction workout must fall inside both chart periods");
+  const beforeClear = await snapshotBothPeriods("seed-amina");
   const leoBeforeClear = await snapshot("seed-leo");
   const clearedSetIndex = 0;
   const clearedSet = expectedBench.sets[clearedSetIndex];
@@ -1021,26 +1030,28 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     "The cleared saved effort must be stored as null",
   );
 
-  const afterClear = await snapshot("seed-amina");
+  const afterClear = await snapshotBothPeriods("seed-amina");
   const directDelta = effortFactorFromRpe(null) - previousFactor;
   const secondaryDelta = directDelta * 0.5;
-  for (const [muscle, delta] of [["chest", directDelta], ["triceps", secondaryDelta]]) {
-    const initial = beforeClear[muscle];
-    const actual = afterClear[muscle];
-    assert.equal(actual.workingSets, initial.workingSets,
-      `${muscle}: clearing RIR must not change overall working-set count`);
-    assert.equal(actual.completedSessions, initial.completedSessions,
-      `${muscle}: clearing RIR must not change completed-session count`);
-    assert.equal(actual.selected.totalSets, initial.selected.totalSets,
-      `${muscle}: clearing RIR must not change involved-set count`);
-    assert.equal(actual.selected.directIndirect, initial.selected.directIndirect,
-      `${muscle}: clearing RIR must not change direct or indirect set counts`);
-    assert.ok(Math.abs(Number(actual.selected.weightedSets) -
-      (Number(initial.selected.weightedSets) + delta)) < 0.011,
-    `${muscle}: direct or secondary weighted totals must use the neutral ×1.0 factor`);
-    assert.ok(Math.abs(Number(actual.selected.weeklyLoad) -
-      (Number(initial.selected.weeklyLoad) + delta * 7 / 30)) < 0.011,
-    `${muscle}: weekly-equivalent workload must reflect the neutral ×1.0 factor`);
+  for (const period of [7, 30]) {
+    for (const [muscle, delta] of [["chest", directDelta], ["triceps", secondaryDelta]]) {
+      const initial = beforeClear[period][muscle];
+      const actual = afterClear[period][muscle];
+      assert.equal(actual.workingSets, initial.workingSets,
+        `${period}-day ${muscle}: clearing RIR must not change overall working-set count`);
+      assert.equal(actual.completedSessions, initial.completedSessions,
+        `${period}-day ${muscle}: clearing RIR must not change completed-session count`);
+      assert.equal(actual.selected.totalSets, initial.selected.totalSets,
+        `${period}-day ${muscle}: clearing RIR must not change involved-set count`);
+      assert.equal(actual.selected.directIndirect, initial.selected.directIndirect,
+        `${period}-day ${muscle}: clearing RIR must not change direct or indirect set counts`);
+      assert.ok(Math.abs(Number(actual.selected.weightedSets) -
+        (Number(initial.selected.weightedSets) + delta)) < 0.011,
+      `${period}-day ${muscle}: direct or secondary weighted totals must use the neutral ×1.0 factor`);
+      assert.ok(Math.abs(Number(actual.selected.weeklyLoad) -
+        (Number(initial.selected.weeklyLoad) + delta * 7 / period)) < 0.011,
+      `${period}-day ${muscle}: weekly-equivalent workload must reflect the neutral ×1.0 factor`);
+    }
   }
   assert.deepEqual(await snapshot("seed-leo"), leoBeforeClear,
     "Clearing Amina's RIR must not change another client's charts");
@@ -1048,8 +1059,8 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
   await reloadAndWait(page, "reloaded cleared RIR dashboard", "dashboard-muscle-activity");
   assert.deepEqual((await storedState(page)).clients, expectedClients,
     "The null effort value must persist after reload");
-  assert.deepEqual(await snapshot("seed-amina"), afterClear,
-    "Direct and secondary neutral-weighted totals must persist after reload");
+  assert.deepEqual(await snapshotBothPeriods("seed-amina"), afterClear,
+    "Direct and secondary neutral-weighted totals in both chart periods must persist after reload");
   assert.deepEqual(await snapshot("seed-leo"), leoBeforeClear,
     "Another client's charts must remain unchanged after reload");
 }
