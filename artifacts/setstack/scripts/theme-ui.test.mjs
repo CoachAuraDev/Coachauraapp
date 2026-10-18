@@ -357,7 +357,12 @@ async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", pe
       totalSets: document.querySelector('[data-testid="text-selected-total-sets"]')?.textContent,
       directIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
       weightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
-      weeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent
+      weeklyLoad: document.querySelector('[data-testid="text-selected-weekly-load"]')?.textContent,
+      contributors: Array.from(document.querySelectorAll('[data-testid^="row-muscle-contributor-"]'))
+        .map((row) => ({
+          exerciseId: row.getAttribute("data-testid")?.replace("row-muscle-contributor-", ""),
+          details: row.querySelector("p:last-child")?.textContent?.trim()
+        }))
     },
     mapRegions: Array.from(document.querySelectorAll('[data-testid^="region-muscle-"]'))
       .map((region) => ({
@@ -367,6 +372,17 @@ async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", pe
       }))
       .sort((a, b) => a.id.localeCompare(b.id))
   })`);
+}
+
+function parseContributorDetails(contributor) {
+  assert.ok(contributor, "The selected exercise should have a contributor row");
+  const match = contributor.details?.match(/^(\d+) direct · (\d+) indirect sets · ([\d.]+) weighted$/);
+  assert.ok(match, `Contributor details should include direct, indirect, and weighted sets: ${contributor.details}`);
+  return {
+    directSets: Number(match[1]),
+    indirectSets: Number(match[2]),
+    weightedSets: Number(match[3]),
+  };
 }
 
 async function verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient) {
@@ -971,6 +987,20 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
       assert.equal(actual.selected.weeklyLoad,
         (Number(initial.selected.weeklyLoad) + delta * 7 / 30).toFixed(2),
         `${muscle}: 30-day weekly-equivalent load must follow the exact effort factor`);
+
+      const initialContribution = parseContributorDetails(
+        initial.selected.contributors.find((item) => item.exerciseId === bench.id),
+      );
+      const actualContribution = parseContributorDetails(
+        actual.selected.contributors.find((item) => item.exerciseId === bench.id),
+      );
+      assert.equal(actualContribution.directSets, initialContribution.directSets,
+        `${muscle}: contributor direct-set count must not change after editing RIR`);
+      assert.equal(actualContribution.indirectSets, initialContribution.indirectSets,
+        `${muscle}: contributor indirect-set count must not change after editing RIR`);
+      assert.ok(Math.abs(actualContribution.weightedSets -
+        (initialContribution.weightedSets + delta)) < 0.011,
+      `${muscle}: the bench press contributor's displayed weighted amount must follow the edited effort`);
     }
     assert.deepEqual(await snapshot("seed-leo"), leoBefore,
       "Correcting Amina's effort must not change another client's charts");
