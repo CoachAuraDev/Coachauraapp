@@ -1095,6 +1095,77 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     "Another client's charts must remain unchanged after reload");
 }
 
+async function rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const session = beforeState.clients.find((client) => client.id === "seed-amina")
+    ?.sessions.find((item) => item.id === "seed-amina-2");
+  const bench = session?.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(session, "Amina's completed load-correction workout should exist");
+  assert.ok(bench && bench.sets.length >= 2, "The completed workout should contain two bench press sets");
+  const invalidLoadInputId = `input-editor-weight-${bench.sets[1].id}`;
+  const rawBefore = await page.evaluate('localStorage.getItem("setstack-v1")');
+  const sessionBefore = JSON.stringify(session);
+  const changedDate = new Date(Date.parse(`${session.date}T12:00:00.000Z`) - 86_400_000)
+    .toISOString().slice(0, 10);
+
+  const snapshot = async () => ({
+    chest: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30),
+    triceps: await muscleChartSnapshot(page, baseUrl, "seed-amina", "triceps", 30),
+  });
+  const beforeCharts = await snapshot();
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  const expanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(expanded, true, "Expand the bench press load inputs");
+
+  // Stage valid edits ahead of the invalid second-set load. None may persist
+  // when validation rejects the completed-workout update.
+  await page.fill("input-edit-session-name", "This valid name must not be partially saved");
+  await page.fill("input-edit-session-date", changedDate);
+  await page.fill(
+    `input-editor-weight-${bench.sets[0].id}`,
+    String(Number(toDisplay(bench.sets[0].weight + 5, beforeState.unit).toFixed(2))),
+  );
+
+  for (const load of ["-1", "Infinity", "NaN"]) {
+    if (Number.isFinite(Number(load))) await page.fill(invalidLoadInputId, load);
+    else await page.fillControlledValue(invalidLoadInputId, load);
+    await page.click("button-editor-save");
+    const validation = await waitFor(`visible validation for load ${load}`, () => page.evaluate(`(() => {
+      const error = document.querySelector('[data-testid="text-editor-error"]');
+      return error && { text: error.textContent, visible: error.getClientRects().length > 0 };
+    })()`), (value) => value?.visible === true);
+    assert.equal(validation.text,
+      "Barbell Bench Press, set 2: check load, whole reps and RIR (0 to 10).",
+      `Load ${load} should be rejected with the editor validation message`);
+    assert.equal(await page.evaluate('localStorage.getItem("setstack-v1")'), rawBefore,
+      `Rejecting load ${load} must leave persisted storage byte-for-byte unchanged`);
+    const stateAfterAttempt = await storedState(page);
+    const sessionAfterAttempt = stateAfterAttempt.clients.find((client) => client.id === "seed-amina")
+      ?.sessions.find((item) => item.id === session.id);
+    assert.equal(JSON.stringify(sessionAfterAttempt), sessionBefore,
+      `Rejecting load ${load} must not partially overwrite the saved workout`);
+  }
+
+  await page.click("button-editor-cancel");
+  await waitFor("invalid load editor closed", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  await navigate(page, `${baseUrl}/clients/seed-amina?tab=muscles&period=30`, "dashboard-muscle-activity");
+  await reloadAndWait(page, "reloaded after rejected load corrections", "dashboard-muscle-activity");
+  assert.equal(await page.evaluate('localStorage.getItem("setstack-v1")'), rawBefore,
+    "Reloading after invalid load corrections must preserve exact saved storage");
+  assert.deepEqual(await storedState(page), beforeState,
+    "Reloading after invalid load corrections must preserve every saved client record");
+  assert.deepEqual(await snapshot(), beforeCharts,
+    "Rejected load corrections must leave direct/secondary workload and set counts unchanged after reload");
+}
+
 async function rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl) {
   const beforeState = await storedState(page);
   const session = beforeState.clients.find((client) => client.id === "seed-amina")
@@ -1767,6 +1838,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Saving a workout with every set removed is rejected; cancelling preserves history and charts");
   await addSavedSetAndVerifyCharts(page, baseUrl, initialClients);
   t.diagnostic("Adding a saved set updates only the intended client's direct and indirect muscle totals");
+  await rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl);
+  t.diagnostic("Negative and non-finite saved-load corrections are rejected without changing storage or muscle charts");
   await rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Out-of-range and non-finite RIR corrections are rejected without changing storage or charts");
   await correctSavedEffortAndVerifyCharts(page, baseUrl);
