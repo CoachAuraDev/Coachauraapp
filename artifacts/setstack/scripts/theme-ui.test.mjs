@@ -561,10 +561,16 @@ async function rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl)
 
   expectedSession.date = validDate;
   await page.fill("input-edit-session-date", validDate);
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')?.textContent',
+  ), undefined, "Correcting the date should immediately clear its stale validation message");
   await page.click("button-editor-save");
   await waitFor("valid saved-workout date correction", () => page.evaluate(
     'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
   ));
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')',
+  ), null, "A successful save should close the editor without leaving an outdated error");
   assert.deepEqual((await storedState(page)).clients, expectedClients,
     "A valid date should save while preserving all other client and workout data");
 

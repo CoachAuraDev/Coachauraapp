@@ -26,12 +26,21 @@ export function SessionEditor({ client, session, onClose }: { client: Client; se
     const r = { weight: wText(s.weight, unit), reps: String(s.reps), rir: rirText(s.rpe), kind: s.kind };
     return { key: s.id, orig: s, ...r, init: sig(r) };
   })])));
-  const patch = (exId: string, key: string, p: Partial<Row>) => setRows((all) => ({ ...all, [exId]: all[exId].map((r) => (r.key === key ? { ...r, ...p } : r)) }));
-  const remove = (exId: string, key: string) => setRows((all) => ({ ...all, [exId]: all[exId].filter((r) => r.key !== key) }));
-  const add = (exId: string) => setRows((all) => {
-    const list = all[exId]; const last = list[list.length - 1];
-    return { ...all, [exId]: [...list, { key: uid(), weight: last?.weight ?? "0", reps: last?.reps ?? "8", rir: "", kind: "normal", init: "" }] };
-  });
+  const patch = (exId: string, key: string, p: Partial<Row>) => {
+    setError("");
+    setRows((all) => ({ ...all, [exId]: all[exId].map((r) => (r.key === key ? { ...r, ...p } : r)) }));
+  };
+  const remove = (exId: string, key: string) => {
+    setError("");
+    setRows((all) => ({ ...all, [exId]: all[exId].filter((r) => r.key !== key) }));
+  };
+  const add = (exId: string) => {
+    setError("");
+    setRows((all) => {
+      const list = all[exId]; const last = list[list.length - 1];
+      return { ...all, [exId]: [...list, { key: uid(), weight: last?.weight ?? "0", reps: last?.reps ?? "8", rir: "", kind: "normal", init: "" }] };
+    });
+  };
   const save = () => {
     if (!name.trim()) { setError("Name this workout."); return; }
     if (!isValidSessionDate(date)) { setError("Enter a valid date."); return; }
@@ -51,11 +60,12 @@ export function SessionEditor({ client, session, onClose }: { client: Client; se
     if (!exercises.length) { setError("A workout needs at least one set. Use Cancel and delete the session instead."); return; }
     const ok = updateSession(client.id, { ...session, name: name.trim(), date, exercises });
     if (!ok) { setError("Could not save this workout."); return; }
+    setError("");
     setNotice("Workout updated.");
     onClose();
   };
   return <Modal title="Edit workout" onClose={onClose} wide>
-    <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass} htmlFor="edit-session-name">Workout name</label><input id="edit-session-name" className={fieldClass} value={name} onChange={(e) => setName(e.target.value)} data-testid="input-edit-session-name"/></div><div><label className={labelClass} htmlFor="edit-session-date">Date</label><input id="edit-session-date" type="date" className={fieldClass} value={date} onChange={(e) => setDate(e.target.value)} data-testid="input-edit-session-date"/></div></div>
+    <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass} htmlFor="edit-session-name">Workout name</label><input id="edit-session-name" className={fieldClass} value={name} onChange={(e) => { setName(e.target.value); setError(""); }} data-testid="input-edit-session-name"/></div><div><label className={labelClass} htmlFor="edit-session-date">Date</label><input id="edit-session-date" type="date" className={fieldClass} value={date} onChange={(e) => { setDate(e.target.value); setError(""); }} data-testid="input-edit-session-date"/></div></div>
     <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">Loads in {unit}. Nothing changes until you save.</p>
     <div className="mt-4 space-y-2">{session.exercises.map((ex) => {
       const exerciseRows = rows[ex.id] ?? [];
