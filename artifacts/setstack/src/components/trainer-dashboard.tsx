@@ -100,7 +100,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
       onRemindLater={backupReminder.remindLater}
     />}
 
-    <section className={`${card} mb-4 p-4 sm:p-5`} data-testid="card-next-workout">
+    {(clients.length > 0 || draft) && <section className={`${card} mb-4 p-4 sm:p-5`} data-testid="card-next-workout">
       {draft ? <>
         <p className={kicker}>Workout in progress</p>
         <h2 className="display-font mt-2 text-2xl font-semibold">{draftClient?.name ?? "Unknown client"} · {draft.name}</h2>
@@ -114,11 +114,11 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
         {due.length > 1 && <div className="mt-4 divide-y divide-[hsl(var(--border))] border-t border-[hsl(var(--border))]">{due.slice(1, 4).map(({ client, routine }) => <button key={client.id} onClick={() => start(client.id, routine.id)} className="flex min-h-11 w-full items-center justify-between text-left text-sm"><span className="truncate">{client.name} <span className={muted}>· {routine.name}</span></span><Play size={14} className="text-[hsl(var(--primary))]" /></button>)}</div>}
       </> : <>
         <p className={kicker}>Next workout</p>
-        <h2 className="display-font mt-2 text-xl font-semibold">{!clients.length ? "No clients yet" : planned.length ? "Today's planned workouts are logged" : "Nothing planned for today"}</h2>
-        <p className={`mt-1 text-sm ${muted}`}>{clients.length ? "Start a routine or a blank workout for any client." : "Add a client to start logging workouts."}</p>
+        <h2 className="display-font mt-2 text-xl font-semibold">{planned.length ? "Today's planned workouts are logged" : "No workouts scheduled"}</h2>
+        <p className={`mt-1 text-sm ${muted}`}>{planned.length ? "Start a routine or a blank workout for any client." : "Plan a workout for a client or start one now."}</p>
         {clients.length > 0 && <div className="mt-4 flex flex-wrap gap-2"><button className={primary} onClick={() => setDlg("start")} data-testid="button-quick-start"><Zap size={16} />Start workout</button></div>}
       </>}
-    </section>
+    </section>}
 
     <div className="mb-3 grid grid-cols-2 gap-2" data-testid="overview-stats">
       {[["Clients", String(clients.length)], ["Workouts this week", String(week.workouts)]].map(([l, v]) => <div key={l} className={`${card} p-3`}><p className={kicker}>{l}</p><p className="display-font mt-1 text-xl font-semibold">{v}</p></div>)}
@@ -144,7 +144,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
     <div className="grid grid-cols-1 gap-6" data-testid="dashboard-columns">
       <div>
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="display-font text-xl font-semibold">Clients</h2>{clients.length > 0 && <div className="flex min-w-0 gap-2"><div className="relative min-w-0 flex-1 sm:flex-none"><Search className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${muted}`} size={15}/><input className={`${field} pl-9 pr-10 sm:w-48`} placeholder="Find a client" aria-label="Search clients" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="input-search-athletes"/>{search && <button type="button" className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))]" aria-label="Clear client search" onClick={() => setSearch("")} data-testid="button-clear-client-search"><X size={15}/></button>}</div><select className={`${field} w-auto shrink-0`} aria-label="Filter clients by status" value={status} onChange={(e) => setStatus(e.target.value)} data-testid="select-athlete-status"><option value="all">All</option><option value="on-floor">Recent</option><option value="due">4–7 days</option><option value="overdue">8+ days</option><option value="new">No workouts</option></select></div>}</div>
-        <p className="sr-only" role="status" aria-live="polite">{clients.length ? `Showing ${list.length} of ${clients.length} clients` : "No clients yet"}</p>
+        <p className="sr-only" role="status" aria-live="polite">{clients.length ? `Showing ${list.length} of ${clients.length} clients` : "Build your client list"}</p>
         <div className="space-y-2">{list.map(({ client, summary }) => <div key={client.id} className={`${card} flex items-center gap-3 p-3`}>
           <Link href={`/clients/${client.id}`} className="flex min-w-0 flex-1 items-center gap-3" data-testid={`link-client-${client.id}`}>
             <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-sm font-bold text-[hsl(var(--primary))]">{initials(client.name)}</span>
@@ -153,7 +153,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
           <Link href={`/clients/${client.id}?tab=history`} aria-label={`Workout history for ${client.name}`} title="History" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl hover:bg-[hsl(var(--muted))]" data-testid={`link-history-${client.id}`}><History size={17} /></Link>
           <button onClick={() => start(client.id, client.weeklyPlan?.[String(wd)] ?? client.routines[0]?.id ?? null)} aria-label={draft ? "Resume current workout" : `Start session for ${client.name}`} title={draft ? "Resume current workout" : "Start session"} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--secondary))]" data-testid={`button-start-session-${client.id}`}><Zap size={17} /></button>
         </div>)}
-          {!list.length && <div className={`${card} p-6 text-center`}><Users className={`mx-auto ${muted}`} size={24} /><h3 className="mt-3 font-semibold">{clients.length ? "No clients match." : "No clients yet."}</h3><p className={`mt-1 text-sm ${muted}`}>{clients.length ? "Adjust the search or status filter." : "Use Add client above to create the first profile."}</p>{clients.length > 0 && hasFilters && <button type="button" className={`${quiet} mt-3`} onClick={clearFilters} data-testid="button-clear-client-filters">Clear filters</button>}</div>}
+          {!list.length && <div className={`${card} p-5 text-center sm:p-6`} data-testid={clients.length ? "empty-client-search" : "empty-client-list"}>{clients.length ? <><Users className={`mx-auto ${muted}`} size={20} /><h3 className="mt-2 font-semibold">No clients match.</h3><p className={`mt-1 text-sm ${muted}`}>Adjust the search or status filter.</p>{hasFilters && <button type="button" className={`${quiet} mt-3`} onClick={clearFilters} data-testid="button-clear-client-filters">Clear filters</button>}</> : <><Users className="mx-auto text-[hsl(var(--primary))]" size={20} /><h3 className="mt-2 font-semibold">Build your client list</h3><p className={`mt-1 text-sm ${muted}`}>Add your first client to start tracking workouts and progress.</p></>}</div>}
         </div>
       </div>
     </div>

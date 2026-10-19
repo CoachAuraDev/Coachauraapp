@@ -2092,6 +2092,120 @@ async function verifyExerciseIllustrations(page, baseUrl, appearance) {
   assert.deepEqual((await storedState(page)).clients, before.clients, "Browsing illustrations and cancelling a routine must not alter client data");
 }
 
+async function verifyPolishedEmptyStates(page, baseUrl, fixtureClients) {
+  const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
+  assert.ok(originalStorage, "The isolated browser should contain its seeded test state");
+  const replaceStorage = async (value) => page.evaluate(
+    `localStorage.setItem("setstack-v1", ${JSON.stringify(JSON.stringify(value))})`,
+  );
+
+  try {
+    const noClientsStore = JSON.parse(originalStorage);
+    noClientsStore.state.clients = [];
+    await replaceStorage(noClientsStore);
+    await navigate(page, `${baseUrl}/`, "empty-client-list");
+    const dashboardEmpty = await page.evaluate(`({
+      heading: document.querySelector('[data-testid="empty-client-list"] h3')?.textContent.trim(),
+      description: document.querySelector('[data-testid="empty-client-list"] p')?.textContent.trim(),
+      addClientButtons: document.querySelectorAll('[data-testid="button-add-client"]').length,
+      nextWorkout: !!document.querySelector('[data-testid="card-next-workout"]')
+    })`);
+    assert.equal(dashboardEmpty.heading, "Build your client list");
+    assert.equal(dashboardEmpty.description, "Add your first client to start tracking workouts and progress.");
+    assert.equal(dashboardEmpty.addClientButtons, 1, "The empty dashboard should expose one Add client action");
+    assert.equal(dashboardEmpty.nextWorkout, false, "A no-client dashboard should not show a redundant workout prompt");
+    await page.click("button-add-client");
+    await waitFor("add-client form from dashboard empty state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="button-save-client"]\')',
+    ));
+
+    const emptyClient = structuredClone(fixtureClients[0]);
+    emptyClient.sessions = [];
+    emptyClient.routines = [];
+    emptyClient.weeklyPlan = {};
+    emptyClient.bodyweight = [];
+    const noHistoryStore = JSON.parse(originalStorage);
+    noHistoryStore.state.clients = [emptyClient];
+    noHistoryStore.state.draft = null;
+    await replaceStorage(noHistoryStore);
+    await navigate(page, `${baseUrl}/clients/${emptyClient.id}`, "empty-weekly-plan");
+    assert.equal(await page.evaluate(
+      'document.querySelector("[data-testid=\\"empty-weekly-plan\\"] h3")?.textContent.trim()',
+    ), "No workouts scheduled");
+    assert.equal(await page.evaluate(
+      'document.querySelector("[data-testid=\\"button-empty-create-routine\\"]")?.textContent.includes("Create workout")',
+    ), true, "The no-schedule action should open the existing routine editor");
+    assert.equal(await page.evaluate(
+      'document.querySelectorAll("[data-testid=\\"button-empty-create-routine\\"], [data-testid=\\"button-new-routine\\"]").length',
+    ), 1, "The no-routine profile should not show duplicate create actions");
+    assert.equal(await page.evaluate(
+      'document.querySelector("[data-testid=\\"empty-bodyweight\\"] p")?.textContent.trim()',
+    ), "Track your starting point");
+
+    await page.click("tab-records");
+    await waitFor("empty personal-record state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="empty-personal-records"]\')',
+    ));
+    assert.equal(await page.evaluate(
+      'document.querySelector("[data-testid=\\"empty-personal-records\\"] p")?.textContent.trim()',
+    ), "No records yet");
+    await page.click("tab-history");
+    await waitFor("empty workout-history state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="empty-workout-history"]\')',
+    ));
+    assert.equal(await page.evaluate(
+      'document.querySelector("[data-testid=\\"empty-workout-history\\"] p")?.textContent.trim()',
+    ), "Progress starts here");
+    await page.click("tab-muscles");
+    await waitFor("empty muscle analytics state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="empty-muscle-history"]\')',
+    ));
+
+    await page.click("tab-overview");
+    await page.click("button-empty-create-routine");
+    await waitFor("empty routine builder state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="empty-routine-exercises"]\')',
+    ));
+    assert.equal(await page.evaluate(
+      'document.querySelector("[data-testid=\\"empty-routine-exercises\\"] p")?.textContent.trim()',
+    ), "Start building your workout");
+    await page.click("button-cancel-routine");
+
+    await page.click("button-client-start-session");
+    await waitFor("empty live workout state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="empty-live-workout"]\')',
+    ));
+    assert.equal(await page.evaluate(
+      'document.querySelectorAll("[data-testid=\\"button-logger-add-exercise\\"]").length',
+    ), 1, "A blank live workout should show only one Add exercise action");
+    await page.click("button-logger-add-exercise");
+    await waitFor("exercise library from live empty state", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="input-logger-exercise"]\')',
+    ));
+    await page.click("button-logger-add-exercise");
+    await page.click("button-minimize-session");
+    await waitFor("minimized blank workout", () => page.evaluate(
+      'document.querySelector(\'[data-testid="panel-workout-logger"]\') === null',
+    ));
+
+    await page.fill("input-bodyweight", "71.2");
+    await page.click("button-add-bodyweight");
+    const recordedState = await storedState(page);
+    assert.equal(recordedState.clients[0].bodyweight.length, 1, "The existing measurement action should save a real measurement");
+    assert.equal(await page.evaluate(
+      '!!document.querySelector(\'[data-testid="empty-bodyweight"]\')',
+    ), false, "The measurement empty state should disappear once data exists");
+    assert.deepEqual(
+      recordedState.clients[0].sessions,
+      [],
+      "Opening the routine builder, exercise picker and rest of the empty workflow must not create workout history",
+    );
+  } finally {
+    await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(originalStorage)})`);
+    await navigate(page, `${baseUrl}/`, "dashboard-columns");
+  }
+}
+
 test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 360000 }, async (t) => {
   const chrome = browserBinary();
   try {
@@ -2199,6 +2313,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(dashboardContent.clientRows, initialClients.length, "Client shortcuts must remain visible");
   assert.ok(dashboardContent.quickStart, "Quick workout actions must remain available");
   assert.ok(dashboardContent.overviewStats, "Dashboard overview statistics must remain available");
+  await verifyPolishedEmptyStates(page, baseUrl, initialClients);
+  t.diagnostic("No-client, no-schedule, no-routine, no-exercise, no-history, no-record, and no-measurement states guide existing actions without duplicating them");
   await navigate(page, `${baseUrl}/clients/${clientId}`, "button-client-start-session");
 
   for (let index = 0; index < appearances.length; index += 1) {
@@ -2280,7 +2396,7 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
     'document.querySelector(\'[data-testid="card-client-muscle-balance"]\')?.textContent.includes("No mapped workout activity yet")',
   ));
   const emptyOverview = await page.evaluate(`({
-    strength: document.querySelector('[data-testid="card-client-strength-trend"]')?.textContent.includes("No strength history yet"),
+    strength: document.querySelector('[data-testid="card-client-strength-trend"]')?.textContent.includes("Progress starts here"),
     weeklyTotal: document.querySelector('[data-testid="card-client-weekly-sets"] [aria-label$="working sets this week"]')?.textContent
   })`);
   assert.equal(emptyOverview.strength, true, "The strength card should not invent a performance history");

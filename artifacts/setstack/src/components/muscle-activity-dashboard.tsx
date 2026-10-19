@@ -86,8 +86,8 @@ export function MuscleActivityDashboard({ client }: { client: Client }) {
     </div>
 
     {result.workingSets === 0 && <div className={`${panel} border-dashed`} data-testid="empty-muscle-history">
-      <h3 className="font-semibold">No working sets in these {period} days</h3>
-      <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Finish a workout for {client.name} to build this map. Unfinished workouts and warm-up-only sessions do not add workload. You can also check the 30-day view for earlier sessions.</p>
+      <h3 className="font-semibold">Progress starts here</h3>
+      <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Complete a workout for {client.name} to build this view. Unfinished and warm-up-only sessions are not included.</p>
       <button type="button" onClick={() => startSession(client.id, client.routines[0]?.id ?? null)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[hsl(var(--primary))] px-4 text-sm font-semibold text-[hsl(var(--primary-foreground))]" data-testid="button-muscle-start-session"><Zap size={16}/>Start workout</button>
     </div>}
     {result.unmappedExercises.length > 0 && <div className="rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-4 text-sm text-[hsl(38_95%_80%)]" data-testid="warning-unmapped-exercises">

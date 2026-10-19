@@ -315,8 +315,8 @@ export function ClientOverviewVisualizations({ client, exerciseLibrary, unit }: 
             </div>
             {exerciseOptions.length === 0 ? (
               <div className="mt-4 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 py-6 text-center">
-                <p className="text-sm font-semibold">No strength history yet</p>
-                <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Log a completed session with at least one weighted working set to see an estimate here.</p>
+                <p className="text-sm font-semibold">Progress starts here</p>
+                <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Complete a weighted workout to start this strength history.</p>
               </div>
             ) : strengthHistory.length === 0 ? (
               <p className="mt-5 rounded-xl bg-[hsl(var(--background))] p-4 text-sm text-[hsl(var(--muted-foreground))]">No valid completed-session estimates for this exercise.</p>

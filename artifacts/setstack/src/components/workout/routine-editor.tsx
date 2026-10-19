@@ -141,7 +141,7 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
             </div>
           </div>}
         </div>;
-      })}</div> : <p className="rounded-xl border border-dashed border-[hsl(var(--border))] p-4 text-center text-sm text-[hsl(var(--muted-foreground))]">Choose exercises above to build this routine.</p>}
+      })}</div> : <div className="rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4 text-center" data-testid="empty-routine-exercises"><p className="text-sm font-semibold">Start building your workout</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Add exercises to create this training session.</p><p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">Search above and tap Add beside an exercise.</p></div>}
     </div>
     {error && <p className="mt-3 text-sm text-[hsl(0_90%_75%)]" role="alert" data-testid="text-routine-error">{error}</p>}
     <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-[hsl(var(--border))] pt-4">
