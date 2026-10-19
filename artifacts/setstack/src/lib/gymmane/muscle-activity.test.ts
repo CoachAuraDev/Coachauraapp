@@ -250,10 +250,16 @@ test("recovery labels use the latest day and current workload independent of dis
   assert.equal(getMuscle(recovering, 7, "chest").recoveryStatus, "recovering");
   assert.equal(getMuscle(recovering, 7, "chest").estimatedRecoveryHours, 72);
   const old = [session("test-old-recovered", "2025-03-20", [logExercise(bench, [set("old", "normal", null)])])];
-  assert.equal(getMuscle(old, 7, "chest").recoveryStatus, "recovered");
-  assert.equal(getMuscle(old, 7, "chest").directSets, 0);
-  assert.equal(getMuscle(old, 30, "chest").recoveryStatus, "recovered");
-  assert.equal(getMuscle(old, 30, "chest").directSets, 1);
+  const oldSevenDay = getMuscle(old, 7, "chest");
+  assert.equal(oldSevenDay.recoveryStatus, "recovered");
+  assert.equal(oldSevenDay.directSets, 0);
+  assert.equal(oldSevenDay.selectedPeriodSessions, 0);
+  assert.equal(oldSevenDay.lastWorkoutDate, "2025-03-20");
+  assert.equal(oldSevenDay.daysSinceLastWorkout, 10);
+  const oldThirtyDay = getMuscle(old, 30, "chest");
+  assert.equal(oldThirtyDay.recoveryStatus, "recovered");
+  assert.equal(oldThirtyDay.directSets, 1);
+  assert.equal(oldThirtyDay.lastWorkoutDate, "2025-03-20");
   const sameDay = [
     session("test-same-day-am", today, [logExercise(bench, [set("am1", "normal", null), set("am2", "normal", null)])]),
     session("test-same-day-pm", today, [logExercise(bench, [set("pm1", "normal", null), set("pm2", "normal", null)])]),
