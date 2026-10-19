@@ -536,6 +536,53 @@ async function openSavedSessionEditor(page, baseUrl, sessionId, ownerId = "seed-
   ));
 }
 
+async function renameSavedWorkoutAndVerifyCharts(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
+  const session = amina?.sessions.find((item) => item.id === "seed-amina-1");
+  assert.ok(session, "Amina's saved workout should be available to rename");
+  const renamed = `${session.name} (renamed)`;
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedSession = expectedClients.find((client) => client.id === amina.id)
+    .sessions.find((item) => item.id === session.id);
+  expectedSession.name = renamed;
+
+  const chartSnapshot = async () => ({
+    chest7: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 7),
+    triceps7: await muscleChartSnapshot(page, baseUrl, "seed-amina", "triceps", 7),
+    quadriceps7: await muscleChartSnapshot(page, baseUrl, "seed-amina", "quadriceps", 7),
+    chest30: await muscleChartSnapshot(page, baseUrl, "seed-amina", "chest", 30),
+    otherClientChest: await muscleChartSnapshot(page, baseUrl, "seed-leo", "chest", 7),
+  });
+  const beforeCharts = await chartSnapshot();
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  await page.fill("input-edit-session-name", renamed);
+  await page.click("button-editor-save");
+  await waitFor("renamed saved workout", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === amina.id);
+    return client?.sessions.find((item) => item.id === session.id)?.name;
+  }, (name) => name === renamed);
+
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "Renaming a workout must change only its name in all stored client history");
+  assert.deepEqual(await chartSnapshot(), beforeCharts,
+    "Renaming a workout must not change any checked muscle chart snapshot");
+
+  await navigate(page, `${baseUrl}/clients/${amina.id}?tab=history`, "button-client-start-session");
+  assert.ok(await page.evaluate(`Array.from(document.querySelectorAll("summary"))
+    .some((summary) => summary.textContent.includes(${JSON.stringify(renamed)}))`),
+  "Workout history should display the saved new name");
+  await navigate(page, `${baseUrl}/clients/${amina.id}?tab=muscles`, "client-training-analytics");
+  await reloadAndWait(page, "reloaded renamed workout and client muscle dashboard", "client-training-analytics");
+
+  const persistedClients = (await storedState(page)).clients;
+  assert.deepEqual(persistedClients, expectedClients,
+    "Reload must preserve the renamed workout without changing any other history data");
+  assert.deepEqual(await chartSnapshot(), beforeCharts,
+    "The client's muscle charts must remain unchanged after reloading the renamed workout");
+}
+
 async function rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl) {
   const beforeState = await storedState(page);
   const client = beforeState.clients.find((item) => item.id === "seed-amina");
@@ -2098,6 +2145,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   await assertAppearance(page, "default");
   await cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Cancelling saved-set edits leaves client history and muscle charts unchanged");
+  await renameSavedWorkoutAndVerifyCharts(page, baseUrl);
+  t.diagnostic("Renaming a saved workout changes only its history label and leaves muscle charts unchanged after reload");
   await rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Impossible saved-workout dates are rejected without changing history, while valid dates still save");
   await rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl);
