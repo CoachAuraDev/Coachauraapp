@@ -26,6 +26,54 @@
   }
 }
 
+@keyframes coachaura-intro-scale {
+  from { opacity: 0; transform: scale(.86); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes coachaura-intro-glow {
+  0% { opacity: 0; filter: drop-shadow(0 0 0 hsl(var(--primary) / 0)); }
+  52% { opacity: 1; filter: drop-shadow(0 0 22px hsl(var(--primary) / .34)); }
+  100% { opacity: .8; filter: drop-shadow(0 0 8px hsl(var(--primary) / .15)); }
+}
+
+@keyframes coachaura-intro-wordmark {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes coachaura-intro-welcome {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.intro-mark {
+  animation: coachaura-intro-scale 760ms cubic-bezier(.2,.75,.25,1) both;
+}
+
+.intro-mark-glow {
+  animation: coachaura-intro-glow 1800ms ease-in-out both;
+}
+
+.intro-wordmark {
+  animation: coachaura-intro-wordmark 480ms ease-out 480ms both;
+}
+
+.intro-welcome {
+  animation: coachaura-intro-welcome 360ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-mark,
+  .intro-mark-glow,
+  .intro-wordmark,
+  .intro-welcome {
+    animation: none;
+    filter: none;
+    transform: none;
+  }
+}
+
 @font-face {
   font-family: 'DM Sans';
   font-style: normal;

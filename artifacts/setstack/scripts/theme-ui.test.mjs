@@ -2092,6 +2092,60 @@ async function verifyExerciseIllustrations(page, baseUrl, appearance) {
   assert.deepEqual((await storedState(page)).clients, before.clients, "Browsing illustrations and cancelling a routine must not alter client data");
 }
 
+async function verifyFirstLaunchIntro(page, baseUrl) {
+  await navigate(page, `${baseUrl}/`, "first-launch-intro");
+  const splash = await page.evaluate(`({
+    skipVisible: !!document.querySelector('[data-testid="button-intro-skip"]'),
+    markAnimation: getComputedStyle(document.querySelector(".intro-mark")).animationName,
+    wordmarkAnimation: getComputedStyle(document.querySelector('[data-testid="intro-wordmark"]')).animationName
+  })`);
+  assert.equal(splash.skipVisible, true, "Skip must be available during the opening animation");
+  assert.equal(splash.markAnimation, "coachaura-intro-scale");
+  assert.equal(splash.wordmarkAnimation, "coachaura-intro-wordmark");
+
+  const animationStarted = Date.now();
+  await waitFor("welcome screen after opening animation", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="intro-welcome"]\')',
+  ));
+  const animationDuration = Date.now() - animationStarted;
+  assert.ok(animationDuration >= 2200 && animationDuration < 6000, `The opening transition should take about 2–3 seconds (observed ${animationDuration}ms)`);
+  const welcome = await page.evaluate(`({
+    headline: document.querySelector('[data-testid="intro-welcome"] h1')?.innerText.replace(/\\s+/g, " ").trim(),
+    supporting: document.querySelector('[data-testid="intro-welcome"] p')?.textContent.trim()
+  })`);
+  assert.equal(welcome.headline, "Your clients. Your data. No subscriptions.");
+  assert.equal(welcome.supporting, "CoachAura");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="intro-welcome"]\')?.textContent.includes("Track workouts, manage clients and monitor progress — all in one streamlined app.")',
+  ), true);
+
+  await page.click("button-intro-get-started");
+  await waitFor("app after Get Started", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="dashboard-columns"]\')',
+  ));
+  assert.equal(await page.evaluate(
+    'localStorage.getItem("coachaura-intro-complete-v1")',
+  ), "1", "Get Started should persist completion locally");
+  assert.equal(await page.evaluate(
+    '!!document.querySelector(\'[data-testid="first-launch-intro"]\')',
+  ), false);
+  await reloadAndWait(page, "subsequent launch after Get Started", "dashboard-columns");
+
+  await page.evaluate(`(() => {
+    localStorage.removeItem("coachaura-intro-complete-v1");
+    localStorage.removeItem("setstack-v1");
+  })()`);
+  await navigate(page, `${baseUrl}/`, "button-intro-skip");
+  await page.click("button-intro-skip");
+  await waitFor("app after Skip", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="dashboard-columns"]\')',
+  ));
+  assert.equal(await page.evaluate(
+    'localStorage.getItem("coachaura-intro-complete-v1")',
+  ), "1", "Skip should persist completion locally");
+  await reloadAndWait(page, "subsequent launch after Skip", "dashboard-columns");
+}
+
 async function verifyPolishedEmptyStates(page, baseUrl, fixtureClients) {
   const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
   assert.ok(originalStorage, "The isolated browser should contain its seeded test state");
@@ -2294,12 +2348,16 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
     state: { clients: initialClients, unit: "kg", appearance: "default", draft: null, custom: [], templates: [] },
     version: 0,
   });
-  await page.send("Page.addScriptToEvaluateOnNewDocument", {
-    source: `if (location.host === "127.0.0.1:${appPort}" && !localStorage.getItem("setstack-v1")) {
-      localStorage.setItem("setstack-v1", ${JSON.stringify(fixture)});
-    }`,
-  });
+  await verifyFirstLaunchIntro(page, baseUrl);
+  await page.evaluate(`(() => {
+    localStorage.removeItem("coachaura-intro-complete-v1");
+    localStorage.setItem("setstack-v1", ${JSON.stringify(fixture)});
+  })()`);
   await navigate(page, `${baseUrl}/`, "dashboard-columns");
+  assert.equal(await page.evaluate(
+    '!!document.querySelector(\'[data-testid="first-launch-intro"]\')',
+  ), false, "A stored workspace from an older installation must bypass onboarding");
+  assert.deepEqual((await storedState(page)).clients, initialClients, "Existing client data must remain unchanged when skipping onboarding on an update");
   const dashboardContent = await page.evaluate(`({
     hasRecentActivity: Array.from(document.querySelectorAll("h2"))
       .some((heading) => heading.textContent.trim() === "Recent activity"),

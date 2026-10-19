@@ -25,6 +25,8 @@ import { billingController, initializePlayBilling } from "@/lib/billing/controll
 import { FREE_CLIENT_LIMIT } from "@/lib/billing/entitlement";
 import { LifetimePaywall, useBillingSnapshot } from "@/components/lifetime-paywall";
 import { BrandLockup } from "@/components/brand-lockup";
+import { FirstLaunchIntro } from "@/components/first-launch-intro";
+import { markFirstLaunchIntroComplete, shouldShowFirstLaunchIntro } from "@/lib/first-launch";
 import PrivacyPolicyPage from "@/pages/privacy-policy";
 import { APPEARANCE_THEMES } from "@/lib/gymmane/appearance";
 
@@ -325,6 +327,8 @@ function NotFoundPage() {
 function WorkspaceApp() {
   const health=usePersistenceHealth();
   const appearance=useFloor(s=>s.appearance);
+  const [showIntro,setShowIntro]=useState(()=>shouldShowFirstLaunchIntro(safeIntroStorage()));
+  const finishIntro=()=>{markFirstLaunchIntroComplete(safeIntroStorage());setShowIntro(false);};
   useLayoutEffect(()=>{
     if(health.phase==="loading"||health.phase==="read-error")return;
     const root=document.documentElement;
@@ -337,8 +341,14 @@ function WorkspaceApp() {
   useEffect(()=>{void initializePlayBilling();},[]);
   useEffect(()=>{void Promise.resolve(useFloor.persist.rehydrate()).catch(()=>{});},[]);
   if(health.phase==="read-error")return <PersistenceStatus/>;
+  if(showIntro)return <FirstLaunchIntro onComplete={finishIntro}/>;
   if(health.phase==="loading") return <div className="flex min-h-[100dvh] items-center justify-center bg-[hsl(var(--background))] p-6"><div className="w-full max-w-sm"><div className="mb-5 h-8 w-36 animate-pulse rounded-lg bg-[hsl(var(--muted))]"/><div className="h-36 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/><div className="mt-4 h-20 animate-pulse rounded-2xl bg-[hsl(var(--muted))]"/></div></div>;
   return <><AppShell><Switch><Route path="/" component={Dashboard}/><Route path="/clients/:id" component={ClientPage}/><Route path="/settings" component={SettingsPage}/><Route component={NotFoundPage}/></Switch></AppShell><PersistenceStatus/></>;
+}
+
+function safeIntroStorage(): Storage | null {
+  try { return typeof window === "undefined" ? null : window.localStorage; }
+  catch { return null; }
 }
 
 function App() {
