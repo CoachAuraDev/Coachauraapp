@@ -5,6 +5,7 @@ import type { Client, Draft, Routine } from "./models.ts";
 import type { MuscleTargetGroup } from "./models.ts";
 import { MUSCLE_TARGET_GROUPS } from "./client-overview.ts";
 import { normalizeSavedAppearance, type AppearanceTheme } from "./appearance.ts";
+import { isValidCalendarDate } from "./calendar-date.ts";
 
 export const MAX_BACKUP_BYTES = 20 * 1024 * 1024;
 export type SavedFloor = {
@@ -53,13 +54,8 @@ function number(v: unknown, path: string, min = 0, max = Infinity, integer = fal
 function nullable(v: unknown, path: string, max = Infinity): void {
   if (v !== null) number(v, path, 0, max);
 }
-export function validCalendarDate(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
-}
 function date(v: unknown, path: string): void {
-  if (!validCalendarDate(v)) throw new Error(`${path}: invalid calendar date.`);
+  if (!isValidCalendarDate(v)) throw new Error(`${path}: invalid calendar date.`);
 }
 function unique(items: RecordValue[], path: string): void {
   const ids = items.map((item, index) => id(item.id, `${path}[${index}].id`));
