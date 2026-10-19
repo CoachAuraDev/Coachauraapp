@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Library, Play, Plus, Search, Users, X, Zap, ChevronDown, History } from "lucide-react";
-import { useFloor, exercisePool } from "@/lib/gymmane/store";
+import { useFloor } from "@/lib/gymmane/store";
+import { kExercises, type CatalogExercise } from "@/lib/gymmane/catalog";
 import { INDIVIDUAL_PROFILE_ID } from "@/lib/gymmane/models";
 import { clientSummary } from "@/lib/gymmane/metrics";
 import { formatLoad, isoWeekday, todayIso, WEEKDAYS } from "@/lib/gymmane/engine";
@@ -181,17 +182,36 @@ function QuickStart({ onClose, onStart, hasDraft }: { onClose: () => void; onSta
   </Dialog>;
 }
 
-export function ExerciseLibrary({ onClose }: { onClose: () => void }) {
+export function ExerciseLibrary({
+  onClose,
+  inline = false,
+  onSelect,
+}: {
+  onClose?: () => void;
+  inline?: boolean;
+  onSelect?: (exercise: CatalogExercise) => void;
+}) {
   const [q, setQ] = useState("");
-  const pool = useMemo(() => exercisePool(), []);
+  const custom = useFloor((state) => state.custom);
+  const pool = useMemo(() => [...kExercises, ...custom], [custom]);
   const matches = pool.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
   const found = matches.slice(0, 60);
-  return <Dialog title="Exercise library" onClose={onClose}>
-    <div className="relative mb-3"><Search size={15} className={`absolute left-3 top-3 ${muted}`} /><input autoFocus className={`${field} pl-9`} placeholder={`Search ${pool.length} exercises`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search exercises" data-testid="input-search-library" /></div>
+  const list = <>
+    <div className="relative mb-3"><Search size={15} className={`absolute left-3 top-3 ${muted}`} /><input autoFocus={inline} className={`${field} pl-9`} placeholder={`Search ${pool.length} exercises`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search exercises" data-testid="input-search-library" /></div>
     <p className={`mb-2 text-[11px] ${muted}`}>Bright areas: primary targets. Softer areas: secondary targets. Illustrations, not measured activation.</p>
-    <div className="divide-y divide-[hsl(var(--border))]">{found.map((e) => <div key={e.id} className="flex items-center gap-3 py-2"><ExerciseMuscleIllustration exercise={e} /><div className="min-w-0 flex-1"><span className="block text-sm font-medium">{e.name}</span><span className={`mono mt-1 block text-[10px] ${muted}`}>{MUSCLE_LABEL[e.primary] ?? e.primary} · {e.equipment}</span></div></div>)}</div>
+    <div className="divide-y divide-[hsl(var(--border))]">{found.map((e) => {
+      const details = <><ExerciseMuscleIllustration exercise={e} /><span className="min-w-0 flex-1 text-left"><span className="block text-sm font-medium">{e.name}</span><span className={`mono mt-1 block text-[10px] ${muted}`}>{MUSCLE_LABEL[e.primary] ?? e.primary} · {e.equipment}</span></span></>;
+      return onSelect
+        ? <button key={e.id} type="button" className="flex min-h-14 w-full items-center gap-3 py-2 text-left hover:bg-[hsl(var(--muted))]" aria-label={`Add ${e.name} to personal workout`} onClick={() => onSelect(e)} data-testid={`button-select-library-exercise-${e.id}`}>{details}<span className="rounded-lg bg-[hsl(var(--accent))] px-3 py-2 text-xs font-semibold text-[hsl(var(--primary))]">Add</span></button>
+        : <div key={e.id} className="flex items-center gap-3 py-2">{details}</div>;
+    })}</div>
     {!found.length && <p className={`py-6 text-center text-sm ${muted}`}>No exercises match.</p>}
     {matches.length > found.length && <p className={`mt-3 text-xs ${muted}`}>Showing {found.length} of {matches.length} matches. Search to narrow the list.</p>}
-    <p className={`mt-3 text-[11px] ${muted}`}>Read-only. Add exercises to a workout while logging.</p>
-  </Dialog>;
+    {!onSelect && <p className={`mt-3 text-[11px] ${muted}`}>Read-only. Add exercises to a workout while logging.</p>}
+  </>;
+  if (inline) return <section className="space-y-4" data-testid="individual-exercises-screen">
+    <header><p className={kicker}>Your training</p><h1 className="display-font mt-1 text-3xl font-semibold tracking-tight">Exercises</h1><p className={`mt-2 text-sm ${muted}`}>Search the exercise library and add a movement directly to your personal workout.</p></header>
+    <div className={`${card} min-w-0 p-4 sm:p-5`}>{list}</div>
+  </section>;
+  return <Dialog title="Exercise library" onClose={onClose ?? (() => {})}>{list}</Dialog>;
 }

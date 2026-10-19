@@ -7,6 +7,7 @@ import {
   UserRound, Users, Weight, X, Zap,
 } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
+import type { CatalogExercise } from "@/lib/gymmane/catalog";
 import {
   INDIVIDUAL_PROFILE_ID,
   individualWorkoutOwner,
@@ -123,7 +124,31 @@ function Dashboard() {
   const startSession = useFloor((s) => s.startSession);
   const deleteSession = useFloor((s) => s.deleteSession);
   const setNotice = useFloor((s) => s.setNotice);
+  const billing = useBillingSnapshot();
+  const hasPremium = billing.status === "lifetime" && billingController.hasLifetimeAccess();
+  const [, setLocation] = useLocation();
   const [ask, confirmNode] = useConfirm();
+  const addPersonalExercise = (exercise: CatalogExercise) => {
+    const current = useFloor.getState().draft;
+    if (current && current.clientId !== INDIVIDUAL_PROFILE_ID) {
+      setNotice("A trainer workout is already active. Resume or finish it before starting a personal workout.");
+      return;
+    }
+    if (!current) startSession(INDIVIDUAL_PROFILE_ID, null);
+    const personalDraft = useFloor.getState().draft;
+    if (!personalDraft || personalDraft.clientId !== INDIVIDUAL_PROFILE_ID) {
+      setNotice("Could not start a personal workout. Your existing workout was left unchanged.");
+      return;
+    }
+    if (personalDraft.exercises.some((item) => item.id === exercise.id)) {
+      setNotice(`${exercise.name} is already in this workout.`);
+      window.dispatchEvent(new Event("setstack:resume-workout"));
+      return;
+    }
+    useFloor.getState().addDraftExercise(exercise);
+    window.dispatchEvent(new Event("setstack:resume-workout"));
+    setNotice(`${exercise.name} added to your personal workout.`);
+  };
   if (trainingMode === "individual") {
     return <>
       <Suspense fallback={<Card className="p-5"><p role="status" className="text-sm text-[hsl(var(--muted-foreground))]">Loading your training overview…</p></Card>}>
@@ -131,8 +156,11 @@ function Dashboard() {
           profile={profile}
           unit={unit}
           draft={draft}
+          premium={hasPremium}
           onStartWorkout={() => startSession(INDIVIDUAL_PROFILE_ID, null)}
-          onOpenExerciseLibrary={() => setLibrary(true)}
+          onAddExerciseToWorkout={addPersonalExercise}
+          onUpgrade={() => setPaywall(true)}
+          onOpenSettings={() => setLocation("/settings")}
           onEditSession={setEditSession}
           onDeleteSession={(session) => ask({
             title: "Delete personal workout?",
@@ -146,6 +174,7 @@ function Dashboard() {
         />
       </Suspense>
       {library && <ExerciseLibrary onClose={() => setLibrary(false)} />}
+      {paywall && <LifetimePaywall onClose={() => setPaywall(false)}/>}
       {editSession && <Suspense fallback={<Modal title="Opening workout editor…" onClose={() => setEditSession(null)}><p role="status">Loading editor…</p></Modal>}>
         <SessionEditor client={individualWorkoutOwner(profile)} session={editSession} onClose={() => setEditSession(null)}/>
       </Suspense>}
