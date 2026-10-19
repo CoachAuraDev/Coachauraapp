@@ -2,6 +2,30 @@
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
 
+/* Opacity-only motion keeps exercise illustrations light and never moves controls. */
+@keyframes coachaura-exercise-muscle-pulse {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 1; }
+}
+
+.exercise-muscle-primary {
+  filter: drop-shadow(0 0 2px var(--muscle-map-highlight));
+  animation: coachaura-exercise-muscle-pulse 2.6s ease-in-out infinite;
+}
+
+.exercise-muscle-secondary {
+  filter: drop-shadow(0 0 1px var(--muscle-map-highlight));
+  animation: coachaura-exercise-muscle-pulse 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .exercise-muscle-primary,
+  .exercise-muscle-secondary {
+    animation: none;
+    filter: none;
+  }
+}
+
 @font-face {
   font-family: 'DM Sans';
   font-style: normal;
@@ -184,7 +208,6 @@
   --status-recovered-background: hsl(84 80% 62% / .14);
   --status-recovered-foreground: hsl(84 80% 72%);
 
-  /* Exercise target illustrations use the active theme accent and respect reduced motion. */
 
   /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
 

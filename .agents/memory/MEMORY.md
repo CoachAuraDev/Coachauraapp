@@ -11,3 +11,4 @@
 - [Development error overlay](dev-error-overlay-transport.md) — custom error names are dropped in transport; name-based filtering did not unblock recovery controls.
 - [Android testing signing](android-testing-signing.md) — installed build is GitHub Actions debug; verify the original test key and plan commercial-signing migration explicitly.
 - [GitHub source-control access](github-source-control-access.md) — healthy provider authorization did not give CLI access; generic connection forms rejected it.
+- [Exercise target illustrations](exercise-target-illustrations.md) — educational target diagrams, not activation measurements; uncertain mappings must stay neutral.

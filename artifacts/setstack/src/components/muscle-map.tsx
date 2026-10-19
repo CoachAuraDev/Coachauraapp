@@ -1,4 +1,4 @@
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { memo, useMemo, useState, type KeyboardEvent } from "react";
 import { useFloor } from "@/lib/gymmane/store";
 import { mapExerciseMuscles, MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
 import { coachAuraWorkloadColor, workloadLegendForAppearance } from "@/lib/gymmane/muscle-intensity-colors";
@@ -72,11 +72,11 @@ const UNDERLAY: Partial<Record<MuscleView, Partial<Record<MuscleGroup, string>>>
 const MIRROR = "translate(200 0) scale(-1 1)";
 
 /** Compact, illustrative target map for an exercise (not a muscle-activation measurement). */
-export function ExerciseMuscleIllustration({
+export const ExerciseMuscleIllustration = memo(function ExerciseMuscleIllustration({
   exercise,
   size = "compact",
 }: {
-  exercise: CatalogExercise;
+  exercise: Pick<CatalogExercise, "id" | "name" | "primary"> & Partial<Pick<CatalogExercise, "secondary" | "muscleMappingExplicit">>;
   size?: "compact" | "regular";
 }) {
   const mapping = mapExerciseMuscles(exercise);
@@ -114,19 +114,18 @@ export function ExerciseMuscleIllustration({
           {Object.entries(SHAPES[view]).map(([rawId, paths]) => {
             const id = rawId as MuscleGroup;
             const role = id === mapping.primary ? "primary" : secondary.has(id) ? "secondary" : null;
-            if (!role) return null;
             return (
               <g
                 key={id}
-                className={`exercise-muscle-region exercise-muscle-${role}`}
-                fill="var(--primary)"
-                fillOpacity={role === "primary" ? 0.92 : 0.54}
-                stroke="var(--muscle-map-background)"
+                className={role ? `exercise-muscle-region exercise-muscle-${role}` : undefined}
+                fill={role ? "var(--muscle-map-highlight)" : "var(--muscle-map-body)"}
+                fillOpacity={role === "secondary" ? 0.54 : role === "primary" ? 0.92 : 1}
+                stroke={role ? "var(--muscle-map-background)" : "var(--muscle-map-body-border)"}
                 strokeWidth="0.8"
                 strokeLinejoin="round"
                 data-muscle={id}
-                data-role={role}
-                data-testid={`exercise-map-${exercise.id}-${id}-${role}`}
+                data-role={role ?? "neutral"}
+                data-testid={`exercise-map-${exercise.id}-${id}-${role ?? "neutral"}`}
               >
                 {paths.map((path, index) => (
                   <g key={index}><path d={path} /><path d={path} transform={MIRROR} /></g>
@@ -138,7 +137,7 @@ export function ExerciseMuscleIllustration({
       ))}
     </span>
   );
-}
+});
 
 export function MuscleMap({
   muscles,

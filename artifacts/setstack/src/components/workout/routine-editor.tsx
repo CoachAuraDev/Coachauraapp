@@ -5,6 +5,7 @@ import { uid } from "@/lib/gymmane/engine";
 import type { Client, PlannedSet, Routine } from "@/lib/gymmane/models";
 import type { CatalogExercise } from "@/lib/gymmane/catalog";
 import { CustomExerciseMuscles } from "@/components/custom-exercise-muscles";
+import { ExerciseMuscleIllustration } from "@/components/muscle-map";
 import { Modal, fieldClass, labelClass, primaryBtn, quietBtn } from "./shared";
 
 const blank = (reps: number | null): PlannedSet => ({ reps, weightKg: null, kind: "normal" });
@@ -91,7 +92,8 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
       <input id="exercise-search" className={`${fieldClass} min-h-11`} value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search by exercise or muscle group" data-testid="input-exercise-search"/>
       <div className="mt-2 max-h-40 overflow-y-auto" role="list" aria-label="Exercise search results">
         {matches.map((ex) => <button type="button" key={ex.id} disabled={exerciseIds.includes(ex.id)} onClick={() => addExercise(ex.id)} className="flex min-h-11 w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-[hsl(var(--muted))] disabled:opacity-40" data-testid={`button-add-exercise-${ex.id}`}>
-          <span className="min-w-0 truncate font-medium">{ex.name}<span className="ml-2 text-xs font-normal text-[hsl(var(--muted-foreground))]">{ex.equipment}</span></span>
+          <ExerciseMuscleIllustration exercise={ex}/>
+          <span className="min-w-0 flex-1 font-medium">{ex.name}<span className="mt-1 block text-xs font-normal text-[hsl(var(--muted-foreground))]">{ex.equipment}</span></span>
           <span className="flex shrink-0 items-center gap-1 text-xs font-semibold text-[hsl(var(--primary))]">{exerciseIds.includes(ex.id) ? "Added" : <><Plus size={14}/>Add</>}</span>
         </button>)}
         {!matches.length && <p className="px-3 py-4 text-sm text-[hsl(var(--muted-foreground))]">No exercises match that search.</p>}
@@ -110,9 +112,14 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
         const expanded = expandedExerciseId === ex.id;
         return <div key={ex.id} className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2.5" data-testid={`row-routine-exercise-${ex.id}`}>
           <div className="flex min-w-0 items-center gap-2">
-            <span className="mono w-6 shrink-0 text-[10px] text-[hsl(var(--muted-foreground))]">{String(index + 1).padStart(2, "0")}</span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{ex.name}</span>
-            <label className="mono flex shrink-0 items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]">SETS<input aria-label={`${ex.name} set count`} className={`${fieldClass} min-h-11 w-14 px-1.5 py-1.5 text-center`} type="number" inputMode="numeric" min="1" max="20" value={countOf(ex.id)} onChange={(e) => setCount(ex.id, Number(e.target.value))} data-testid={`input-routine-sets-${ex.id}`}/></label>
+            <ExerciseMuscleIllustration exercise={ex}/>
+            <div className="min-w-0 flex-1">
+              <span className="block break-words text-sm font-medium">{ex.name}</span>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <span className="mono text-[10px] text-[hsl(var(--muted-foreground))]">{String(index + 1).padStart(2, "0")}</span>
+                <label className="mono flex items-center gap-1.5 text-[10px] text-[hsl(var(--muted-foreground))]">SETS<input aria-label={`${ex.name} set count`} className={`${fieldClass} min-h-11 w-14 px-1.5 py-1.5 text-center`} type="number" inputMode="numeric" min="1" max="20" value={countOf(ex.id)} onChange={(e) => setCount(ex.id, Number(e.target.value))} data-testid={`input-routine-sets-${ex.id}`}/></label>
+              </div>
+            </div>
             <button type="button" aria-label={`${expanded ? "Hide" : "Edit"} ${ex.name} targets`} aria-expanded={expanded} aria-controls={`routine-targets-${ex.id}`} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))]" onClick={() => setExpandedExerciseId(expanded ? null : ex.id)} data-testid={`button-toggle-targets-${ex.id}`}><ChevronDown size={17} className={`transition-transform ${expanded ? "rotate-180" : ""}`}/></button>
           </div>
           {expanded && <div id={`routine-targets-${ex.id}`} className="mt-2 space-y-3 border-t border-[hsl(var(--border))] pt-3">

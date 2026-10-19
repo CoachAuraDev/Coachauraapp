@@ -9,6 +9,7 @@ import { isRapidDuplicateSubmission, type SubmissionFingerprint } from "@/lib/gy
 import type { DraftEntry, SetLog } from "@/lib/gymmane/models";
 import { RestTimer } from "./rest-timer";
 import { SwipeAdjustInput } from "./swipe-adjust-input";
+import { ExerciseMuscleIllustration } from "@/components/muscle-map";
 import { fieldClass, labelClass, primaryBtn, quietBtn, rirText, type AskConfirm } from "./shared";
 
 type Fields = {
@@ -322,7 +323,7 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
           <label className={labelClass} htmlFor="logger-exercise-search">Find an exercise</label>
           <input id="logger-exercise-search" autoFocus className={fieldClass} value={exerciseSearch} onChange={(e) => setExerciseSearch(e.target.value)} placeholder="Type an exercise" data-testid="input-logger-exercise"/>
           {!exerciseSearch && recent.length > 0 && <div className="mt-2"><p className="mono mb-1 text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Recently trained</p><div className="flex flex-wrap gap-1.5">{recent.map((r) => { const ex = mergedPool.find((e) => e.id === r.id); return ex ? <button type="button" key={r.id} className="min-h-11 rounded-lg bg-[hsl(var(--muted))] px-3 text-sm font-medium" onClick={() => addExercise(ex)} data-testid={`button-logger-recent-${r.id}`}>{r.name}</button> : null; })}</div></div>}
-          <div className="mt-2 max-h-40 overflow-y-auto">{filtered.length === 0 && <p className="p-2 text-xs text-[hsl(var(--muted-foreground))]">No matching exercise left to add.</p>}{filtered.map((ex) => <button type="button" key={ex.id} className="block min-h-11 w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[hsl(var(--muted))]" onClick={() => addExercise(ex)} data-testid={`button-logger-exercise-${ex.id}`}>{ex.name}</button>)}</div>
+          <div className="mt-2 max-h-40 overflow-y-auto">{filtered.length === 0 && <p className="p-2 text-xs text-[hsl(var(--muted-foreground))]">No matching exercise left to add.</p>}{filtered.map((ex) => <button type="button" key={ex.id} className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm hover:bg-[hsl(var(--muted))]" onClick={() => addExercise(ex)} data-testid={`button-logger-exercise-${ex.id}`}><ExerciseMuscleIllustration exercise={ex}/><span className="min-w-0 flex-1">{ex.name}</span></button>)}</div>
         </div>}
         <RestTimer defaultSeconds={defaultRest} compact/>
         {draft.exercises.length === 0 ? <div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-6 text-center"><Dumbbell className="mx-auto text-[hsl(var(--muted-foreground))]" size={24}/><p className="mt-2 text-sm font-semibold">Make this session yours</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Add the first exercise to start logging.</p><button type="button" className={`${primaryBtn} mt-3`} onClick={() => setShowAdd(true)} data-testid="button-logger-empty-add"><Plus size={15}/>Add exercise</button></div> : <>
@@ -370,7 +371,8 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
           <p className="sr-only" role="status" aria-live="polite" data-testid="text-exercise-reorder-status">{reorderStatus}</p>
           {active && <>
             <div className="mb-4 flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              <ExerciseMuscleIllustration exercise={mergedPool.find((exercise) => exercise.id === active.id) ?? active}/>
+              <div className="min-w-0 flex-1">
                 <p className="mono text-[9px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]" data-testid="text-exercise-progress">Exercise {draft.activeIndex + 1} of {draft.exercises.length}</p>
                 <h3 className="display-font mt-1 break-words text-2xl font-semibold sm:text-3xl" data-testid="text-current-exercise">{active.name}</h3>
                 <p className="mono mt-1 text-[11px] text-[hsl(var(--muted-foreground))]" data-testid="text-planned-sets">{planned > 0 ? `Set ${workCount + 1} of ${planned} planned` : `Set ${active.sets.length + 1}`} · {active.sets.length} logged</p>

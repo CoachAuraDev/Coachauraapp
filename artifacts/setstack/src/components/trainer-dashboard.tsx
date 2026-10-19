@@ -8,6 +8,7 @@ import { weekOverview } from "@/lib/gymmane/dashboard";
 import { MUSCLE_LABEL } from "@/lib/gymmane/metrics";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { BackupReminderCard, useBackupReminder } from "@/components/backup-reminder";
+import { ExerciseMuscleIllustration } from "@/components/muscle-map";
 
 const field = "min-h-11 min-w-0 w-full rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 py-2 text-sm text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]";
 const btn = "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-45";
@@ -183,7 +184,8 @@ function ExerciseLibrary({ onClose }: { onClose: () => void }) {
   const found = matches.slice(0, 60);
   return <Dialog title="Exercise library" onClose={onClose}>
     <div className="relative mb-3"><Search size={15} className={`absolute left-3 top-3 ${muted}`} /><input autoFocus className={`${field} pl-9`} placeholder={`Search ${pool.length} exercises`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search exercises" data-testid="input-search-library" /></div>
-    <div className="divide-y divide-[hsl(var(--border))]">{found.map((e) => <div key={e.id} className="flex min-h-11 items-center justify-between gap-3 py-2"><span className="truncate text-sm font-medium">{e.name}</span><span className={`mono shrink-0 text-[10px] ${muted}`}>{MUSCLE_LABEL[e.primary] ?? e.primary} · {e.equipment}</span></div>)}</div>
+    <p className={`mb-2 text-[11px] ${muted}`}>Bright areas: primary targets. Softer areas: secondary targets. Illustrations, not measured activation.</p>
+    <div className="divide-y divide-[hsl(var(--border))]">{found.map((e) => <div key={e.id} className="flex items-center gap-3 py-2"><ExerciseMuscleIllustration exercise={e} /><div className="min-w-0 flex-1"><span className="block text-sm font-medium">{e.name}</span><span className={`mono mt-1 block text-[10px] ${muted}`}>{MUSCLE_LABEL[e.primary] ?? e.primary} · {e.equipment}</span></div></div>)}</div>
     {!found.length && <p className={`py-6 text-center text-sm ${muted}`}>No exercises match.</p>}
     {matches.length > found.length && <p className={`mt-3 text-xs ${muted}`}>Showing {found.length} of {matches.length} matches. Search to narrow the list.</p>}
     <p className={`mt-3 text-[11px] ${muted}`}>Read-only. Add exercises to a workout while logging.</p>

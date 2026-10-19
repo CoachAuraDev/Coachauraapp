@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Check, ChevronDown, Plus, X } from "lucide-react";
-import { useFloor } from "@/lib/gymmane/store";
+import { exercisePool, useFloor } from "@/lib/gymmane/store";
+import { ExerciseMuscleIllustration } from "@/components/muscle-map";
 import { KIND_LABEL, SET_KINDS, fromDisplay, toDisplay, uid, type SetKind } from "@/lib/gymmane/engine";
 import type { Client, ExerciseLog, SessionLog, SetLog } from "@/lib/gymmane/models";
 import { Modal, fieldClass, labelClass, primaryBtn, quietBtn, rirText } from "./shared";
@@ -18,6 +19,7 @@ export function SessionEditor({ client, session, onClose }: { client: Client; se
   const unit = useFloor((s) => s.unit);
   const updateSession = useFloor((s) => s.updateSession);
   const setNotice = useFloor((s) => s.setNotice);
+  const library = exercisePool();
   const [name, setName] = useState(session.name);
   const [date, setDate] = useState(session.date);
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(session.exercises[0]?.id ?? null);
@@ -72,6 +74,7 @@ export function SessionEditor({ client, session, onClose }: { client: Client; se
       const expanded = expandedExerciseId === ex.id;
       return <section key={ex.id} className="overflow-hidden rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))]" data-testid={`editor-exercise-${ex.id}`}>
         <button type="button" aria-expanded={expanded} aria-controls={`editor-sets-${ex.id}`} onClick={() => setExpandedExerciseId(expanded ? null : ex.id)} className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left">
+          <ExerciseMuscleIllustration exercise={library.find((exercise) => exercise.id === ex.id) ?? ex}/>
           <span className="min-w-0 flex-1 truncate text-sm font-semibold">{ex.name}</span>
           <span className="mono shrink-0 text-[10px] text-[hsl(var(--muted-foreground))]">{exerciseRows.length} sets</span>
           <ChevronDown size={16} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}/>

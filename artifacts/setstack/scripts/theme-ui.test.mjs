@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
 import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
-import { effortFactorFromRpe } from "../src/lib/gymmane/muscle-activity.ts";
+import { effortFactorFromRpe, mapExerciseMuscles } from "../src/lib/gymmane/muscle-activity.ts";
+import { kExercises } from "../src/lib/gymmane/catalog.ts";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
 const repositoryDirectory = fileURLToPath(new URL("../../../", import.meta.url));
@@ -1890,6 +1891,8 @@ async function exerciseWorkout(page, baseUrl) {
     'document.querySelector(\'[data-testid="panel-workout-logger"]\') !== null',
   ));
   assert.ok(await page.evaluate('!!document.querySelector(\'[data-testid="panel-rest-timer"]\')'));
+  assert.ok(await page.evaluate('!!document.querySelector(\'[data-testid="panel-workout-logger"] [data-testid^="exercise-map-"]\')'),
+    "The live exercise should show its local muscle illustration without replacing logging controls");
   const currentUnit = (await storedState(page)).unit;
   for (const control of [
     { testId: "input-set-weight", step: currentUnit === "kg" ? 0.5 : 1 },
@@ -2000,6 +2003,93 @@ async function changeThemeAndReload(page, baseUrl, nextAppearance, savedClients)
   assert.ok(await page.evaluate(
     'document.querySelector(\'[data-testid="list-current-sets"]\')?.textContent.includes("52.5 kg × 7")',
   ), "The logged set should still be visible after the reload");
+}
+
+async function verifyExerciseIllustrations(page, baseUrl, appearance) {
+  const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
+  const before = await storedState(page);
+  await navigate(page, `${baseUrl}/`, "button-open-library");
+  await page.click("button-open-library");
+  await waitFor("exercise library", () => page.evaluate('!!document.querySelector(\'[data-testid="input-search-library"]\')'));
+  // One real catalog example for each primary muscle, without adding sample client records.
+  const samples = [...new Map(kExercises.map((exercise) => [mapExerciseMuscles(exercise).primary, exercise])).values()];
+  assert.equal(samples.length, 18);
+  for (const exercise of samples) {
+    const expected = mapExerciseMuscles(exercise);
+    await page.fill("input-search-library", exercise.name);
+    await waitFor(`illustration for ${exercise.name}`, () => page.evaluate(
+      `!!document.querySelector('[data-testid="exercise-map-${exercise.id}"]')`,
+    ));
+    const observed = await page.evaluate(`(() => {
+      const map = document.querySelector('[data-testid="exercise-map-${exercise.id}"]');
+      const primary = map.querySelector('[data-role="primary"]');
+      return {
+        primary: map.dataset.primaryMuscle,
+        secondary: map.dataset.secondaryMuscles.split(",").filter(Boolean).sort(),
+        highlightedPrimary: [...new Set([...map.querySelectorAll('[data-role="primary"]')].map((region) => region.dataset.muscle))],
+        highlightedSecondary: [...new Set([...map.querySelectorAll('[data-role="secondary"]')].map((region) => region.dataset.muscle))].sort(),
+        views: [...map.querySelectorAll("svg")].map((svg) => svg.dataset.view),
+        neutralRegions: map.querySelectorAll('[data-role="neutral"]').length,
+        fill: getComputedStyle(primary).fill,
+        animation: getComputedStyle(primary).animationDuration,
+        primaryOpacity: primary.getAttribute("fill-opacity"),
+        secondaryOpacity: map.querySelector('[data-role="secondary"]')?.getAttribute("fill-opacity"),
+        overflow: document.documentElement.scrollWidth > innerWidth,
+      };
+    })()`);
+    assert.equal(observed.primary, expected.primary);
+    assert.deepEqual(observed.secondary, [...expected.secondary].sort());
+    assert.deepEqual(observed.highlightedPrimary, [expected.primary]);
+    assert.deepEqual(observed.highlightedSecondary, [...expected.secondary].sort());
+    assert.deepEqual(observed.views, ["front", "back"]);
+    assert.ok(observed.neutralRegions > 0, "Untargeted anatomy remains neutral, including arms");
+    assert.equal(observed.fill, appearance === "default" ? "rgb(183, 243, 74)" : "rgb(232, 168, 124)");
+    assert.equal(observed.animation, "2.6s");
+    assert.equal(observed.primaryOpacity, "0.92");
+    if (expected.secondary.length) assert.equal(observed.secondaryOpacity, "0.54");
+    assert.equal(observed.overflow, false, `${exercise.name} must fit a phone-width list`);
+  }
+  await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
+  assert.equal(await page.evaluate('getComputedStyle(document.querySelector(".exercise-muscle-primary")).animationName'), "none");
+  await page.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "no-preference" }] });
+  await page.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0 });
+  try {
+    await page.fill("input-search-library", "Barbell Bench Press");
+    await waitFor("offline bench illustration", () => page.evaluate('!!document.querySelector(\'[data-testid="exercise-map-EIeI8Vf-chest-primary"]\')'));
+  } finally {
+    await page.send("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  }
+  // A temporary fixture in this isolated browser verifies the neutral fallback.
+  const fallbackStorage = JSON.parse(originalStorage);
+  fallbackStorage.state.custom.push({
+    id: "test-unmapped-illustration", name: "Unmapped illustration test", primary: "other",
+    secondary: [], equipment: "Other", difficulty: "Beginner", mode: "",
+  });
+  try {
+    await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(JSON.stringify(fallbackStorage))})`);
+    await navigate(page, `${baseUrl}/`, "button-open-library");
+    await page.click("button-open-library");
+    await waitFor("fallback search", () => page.evaluate('!!document.querySelector(\'[data-testid="input-search-library"]\')'));
+    await page.fill("input-search-library", "Unmapped illustration test");
+    const fallback = await page.evaluate(`(() => {
+      const map = document.querySelector('[data-testid="exercise-map-test-unmapped-illustration"]');
+      return { primary: map?.dataset.primaryMuscle, highlighted: map?.querySelectorAll(".exercise-muscle-region").length, neutral: map?.querySelectorAll('[data-role="neutral"]').length };
+    })()`);
+    assert.equal(fallback.primary, "unmapped");
+    assert.equal(fallback.highlighted, 0);
+    assert.ok(fallback.neutral > 0);
+  } finally {
+    await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(originalStorage)})`);
+  }
+  await navigate(page, `${baseUrl}/clients/${clientId}`, "button-new-routine");
+  await page.click("button-new-routine");
+  await waitFor("routine exercise search", () => page.evaluate('!!document.querySelector(\'[data-testid="input-exercise-search"]\')'));
+  await page.fill("input-exercise-search", "Barbell Bench Press");
+  assert.ok(await page.evaluate('!!document.querySelector(\'[data-testid="button-add-exercise-EIeI8Vf"] [data-testid="exercise-map-EIeI8Vf-chest-primary"]\')'));
+  await page.click("button-add-exercise-EIeI8Vf");
+  assert.ok(await page.evaluate('!!document.querySelector(\'[data-testid="row-routine-exercise-EIeI8Vf"] [data-testid="exercise-map-EIeI8Vf"]\')'));
+  await page.click("button-cancel-routine");
+  assert.deepEqual((await storedState(page)).clients, before.clients, "Browsing illustrations and cancelling a routine must not alter client data");
 }
 
 test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 360000 }, async (t) => {
@@ -2114,6 +2204,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   for (let index = 0; index < appearances.length; index += 1) {
     const appearance = appearances[index];
     await assertAppearance(page, appearance);
+    await verifyExerciseIllustrations(page, baseUrl, appearance);
+    t.diagnostic(`Exercise maps: all 18 primary muscle groups, ${appearance}, reduced motion, offline search, neutral fallback and routine selection`);
     await exerciseProfileAndMap(page, baseUrl, index);
     const stateBeforeThemeChange = await exerciseWorkout(page, baseUrl);
     const nextAppearance = appearances[(index + 1) % appearances.length];
