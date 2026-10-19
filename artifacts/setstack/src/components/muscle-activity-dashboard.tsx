@@ -107,7 +107,7 @@ export function MuscleActivityDashboard({ client }: { client: Client }) {
           <h3 className="display-font mt-1 text-2xl font-semibold" data-testid="text-selected-muscle">{selected.label}</h3>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="rounded-lg bg-[hsl(var(--muted))] px-3 py-1.5 text-xs font-semibold" data-testid="text-selected-intensity">{intensityLabel[selected.intensity]} activity</span>
-            <span className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${statusTone[selected.recoveryStatus]}`} data-testid="status-muscle-recovery">{formatRecoveryStatus(selected.recoveryStatus)}</span>
+            <span className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${statusTone[selected.recoveryStatus]}`} data-testid="status-muscle-recovery" data-estimated-recovery-hours={selected.estimatedRecoveryHours ?? undefined}>{formatRecoveryStatus(selected.recoveryStatus)}</span>
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4">
             <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Working sets involving muscle</dt><dd className="mono mt-1 text-xl font-bold" data-testid="text-selected-total-sets">{selected.directSets + selected.indirectSets}</dd></div>

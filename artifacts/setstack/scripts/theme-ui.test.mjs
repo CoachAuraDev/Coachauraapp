@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
 import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
-import { effortFactorFromRpe, mapExerciseMuscles } from "../src/lib/gymmane/muscle-activity.ts";
+import { analyzeMuscleActivity, effortFactorFromRpe, mapExerciseMuscles } from "../src/lib/gymmane/muscle-activity.ts";
 import { kExercises } from "../src/lib/gymmane/catalog.ts";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -404,7 +404,7 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
   themeSwatches.set(appearances[index], chartState.chestColor);
 }
 
-async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", period = 7) {
+async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", period = 7, includeRecoveryHours = false) {
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles&period=${period}`, "dashboard-muscle-activity");
   assert.equal(await page.evaluate(
     `document.querySelector('[data-testid="button-muscle-period-${period}"]')?.getAttribute("aria-pressed")`,
@@ -417,6 +417,7 @@ async function muscleChartSnapshot(page, baseUrl, clientId, muscle = "chest", pe
     selected: {
       intensity: document.querySelector('[data-testid="region-muscle-${muscle}"]')?.getAttribute("data-intensity"),
       workload: document.querySelector('[data-testid="region-muscle-${muscle}"]')?.getAttribute("aria-label"),
+      ...( ${includeRecoveryHours} ? { recoveryHours: Number(document.querySelector('[data-testid="status-muscle-recovery"]')?.getAttribute("data-estimated-recovery-hours")) } : {}),
       totalSets: document.querySelector('[data-testid="text-selected-total-sets"]')?.textContent,
       directIndirect: document.querySelector('[data-testid="text-selected-direct-indirect"]')?.textContent,
       weightedSets: document.querySelector('[data-testid="text-selected-weighted-sets"]')?.textContent,
@@ -1156,28 +1157,50 @@ async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
 
 async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
   const beforeState = await storedState(page);
-  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
-  const session = amina?.sessions.find((item) => item.id === "seed-amina-2");
-  const bench = session?.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
-  assert.ok(session, "Amina's completed effort-correction workout should exist");
+  const today = todayIso();
+  const ownerId = "test-effort-recovery";
+  const fixtureClient = structuredClone(seedClients(today).find((client) => client.id === "seed-amina"));
+  fixtureClient.id = ownerId;
+  fixtureClient.name = "Effort recovery fixture";
+  fixtureClient.sessions = [structuredClone(fixtureClient.sessions[0])];
+  const session = fixtureClient.sessions[0];
+  session.id = `${ownerId}-session`;
+  session.date = today;
+  const bench = session.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
   assert.ok(bench, "The completed workout should contain a mapped bench press");
+  session.exercises = [bench];
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    data.state.clients = data.state.clients.filter((client) => client.id !== ${JSON.stringify(ownerId)});
+    data.state.clients.push(${JSON.stringify(fixtureClient)});
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  await reloadAndWait(page, "isolated effort-recovery fixture", "dashboard-muscle-activity");
+
   assert.equal(bench.sets.length, 2);
   assert.ok(bench.sets.every((set) => set.kind === "normal" && set.rpe === 8),
     "Both bench sets should start at RIR 2, the ×1.0 effort factor");
 
   const snapshot = async (id, period = 30) => ({
-    chest: await muscleChartSnapshot(page, baseUrl, id, "chest", period),
-    triceps: await muscleChartSnapshot(page, baseUrl, id, "triceps", period),
+    chest: await muscleChartSnapshot(page, baseUrl, id, "chest", period, true),
+    triceps: await muscleChartSnapshot(page, baseUrl, id, "triceps", period, true),
   });
   const snapshotBothPeriods = async (id) => ({
     7: await snapshot(id, 7),
     30: await snapshot(id, 30),
   });
-  const before = await snapshot("seed-amina");
+  const before = await snapshot(ownerId);
   const leoBefore = await snapshot("seed-leo");
   const originalBenchSets = structuredClone(bench.sets);
   const expectedClients = structuredClone(beforeState.clients);
-  const expectedSession = expectedClients.find((client) => client.id === "seed-amina")
+  expectedClients.push(structuredClone(fixtureClient));
+  const expectedRecoveryHours = (muscle) => analyzeMuscleActivity(
+    expectedClients.find((client) => client.id === ownerId),
+    kExercises,
+    7,
+    todayIso(),
+  ).muscles.find((item) => item.id === muscle)?.estimatedRecoveryHours;
+  const expectedSession = expectedClients.find((client) => client.id === ownerId)
     .sessions.find((item) => item.id === session.id);
   const expectedBench = expectedSession.exercises.find((exercise) => exercise.id === bench.id);
 
@@ -1195,7 +1218,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     );
     const secondaryDelta = directDelta * 0.5;
 
-    await openSavedSessionEditor(page, baseUrl, session.id);
+    await openSavedSessionEditor(page, baseUrl, session.id, ownerId);
     const expanded = await page.evaluate(`(() => {
       const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
       const toggle = section?.querySelector("button[aria-expanded]");
@@ -1214,7 +1237,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     assert.deepEqual((await storedState(page)).clients, expectedClients,
       "An effort correction must change only the selected set's RPE (saved from RIR)");
 
-    const after = await snapshot("seed-amina");
+    const after = await snapshot(ownerId);
     for (const [muscle, delta] of [["chest", directDelta], ["triceps", secondaryDelta]]) {
       const initial = before[muscle];
       const actual = after[muscle];
@@ -1232,6 +1255,12 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
       assert.equal(actual.selected.weeklyLoad,
         (Number(initial.selected.weeklyLoad) + delta * 7 / 30).toFixed(2),
         `${muscle}: 30-day weekly-equivalent load must follow the exact effort factor`);
+      assert.equal(actual.selected.recoveryHours, expectedRecoveryHours(muscle),
+        `${muscle}: recovery hours must reflect the corrected effort-weighted latest exposure`);
+      if (correction.setIndex === 0 && correction.rir === 1) {
+        assert.ok(actual.selected.recoveryHours > initial.selected.recoveryHours,
+          `${muscle}: increasing effort in the latest exposure must lengthen its recovery estimate`);
+      }
 
       const initialContribution = parseContributorDetails(
         initial.selected.contributors.find((item) => item.exerciseId === bench.id),
@@ -1253,7 +1282,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     await reloadAndWait(page, "reloaded RIR correction dashboard", "dashboard-muscle-activity");
     assert.deepEqual((await storedState(page)).clients, expectedClients,
       "The RIR-only correction must persist after reload without changing other session fields");
-    assert.deepEqual(await snapshot("seed-amina"), after,
+    assert.deepEqual(await snapshot(ownerId), after,
       "Direct and secondary weighted totals must persist after reload");
     assert.deepEqual(await snapshot("seed-leo"), leoBefore,
       "Another client's charts must remain unchanged after reload");
@@ -1270,7 +1299,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
   );
   assert.ok(sessionAgeDays >= 0 && sessionAgeDays < 7,
     "The effort-correction workout must fall inside both chart periods");
-  const beforeClear = await snapshotBothPeriods("seed-amina");
+  const beforeClear = await snapshotBothPeriods(ownerId);
   const leoBeforeClear = await snapshot("seed-leo");
   const clearedSetIndex = 0;
   const clearedSet = expectedBench.sets[clearedSetIndex];
@@ -1279,7 +1308,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     "A cleared saved effort value must use the neutral ×1.0 factor");
   clearedSet.rpe = null;
 
-  await openSavedSessionEditor(page, baseUrl, session.id);
+  await openSavedSessionEditor(page, baseUrl, session.id, ownerId);
   const expanded = await page.evaluate(`(() => {
     const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
     const toggle = section?.querySelector("button[aria-expanded]");
@@ -1297,7 +1326,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
   assert.deepEqual(clearedState.clients, expectedClients,
     "Clearing RIR must save null and leave all other workout and client data unchanged");
   assert.equal(
-    clearedState.clients.find((client) => client.id === "seed-amina")
+    clearedState.clients.find((client) => client.id === ownerId)
       ?.sessions.find((item) => item.id === session.id)
       ?.exercises.find((exercise) => exercise.id === bench.id)
       ?.sets.find((set) => set.id === clearedSet.id)?.rpe,
@@ -1305,7 +1334,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
     "The cleared saved effort must be stored as null",
   );
 
-  const afterClear = await snapshotBothPeriods("seed-amina");
+  const afterClear = await snapshotBothPeriods(ownerId);
   const directDelta = effortFactorFromRpe(null) - previousFactor;
   const secondaryDelta = directDelta * 0.5;
   for (const period of [7, 30]) {
@@ -1326,6 +1355,10 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
       assert.ok(Math.abs(Number(actual.selected.weeklyLoad) -
         (Number(initial.selected.weeklyLoad) + delta * 7 / period)) < 0.011,
       `${period}-day ${muscle}: weekly-equivalent workload must reflect the neutral ×1.0 factor`);
+      assert.equal(actual.selected.recoveryHours, expectedRecoveryHours(muscle),
+        `${period}-day ${muscle}: clearing effort must refresh the recovery estimate`);
+      assert.notEqual(actual.selected.recoveryHours, initial.selected.recoveryHours,
+        `${period}-day ${muscle}: clearing effort on the latest exposure must change the recovery estimate`);
     }
   }
   assert.deepEqual(await snapshot("seed-leo"), leoBeforeClear,
@@ -1334,10 +1367,20 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
   await reloadAndWait(page, "reloaded cleared RIR dashboard", "dashboard-muscle-activity");
   assert.deepEqual((await storedState(page)).clients, expectedClients,
     "The null effort value must persist after reload");
-  assert.deepEqual(await snapshotBothPeriods("seed-amina"), afterClear,
+  assert.deepEqual(await snapshotBothPeriods(ownerId), afterClear,
     "Direct and secondary neutral-weighted totals in both chart periods must persist after reload");
   assert.deepEqual(await snapshot("seed-leo"), leoBeforeClear,
     "Another client's charts must remain unchanged after reload");
+
+  await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "dashboard-muscle-activity");
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    data.state.clients = data.state.clients.filter((client) => client.id !== ${JSON.stringify(ownerId)});
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  await reloadAndWait(page, "restored effort-recovery test data", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
+    "The isolated effort-recovery fixture must not change other test data");
 }
 
 async function rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl) {
@@ -2454,8 +2497,6 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Zero, fractional, and over-limit saved-rep corrections are rejected without changing storage or muscle charts");
   await rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Out-of-range and non-finite RIR corrections are rejected without changing storage or charts");
-  await correctSavedEffortAndVerifyCharts(page, baseUrl);
-  t.diagnostic("Effort boundaries, unchanged set counts, client isolation, and reload persistence verified");
   await correctSavedSetsAndVerifyCharts(page, baseUrl);
   t.diagnostic("Saved-set corrections verified; checking seven-day and 30-day date boundaries");
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
@@ -2470,6 +2511,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   ];
   await verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient);
   t.diagnostic("Moving the last recent workout clears selected-period workload while retaining history and recovery");
+  await correctSavedEffortAndVerifyCharts(page, baseUrl);
+  t.diagnostic("Effort corrections update the recovery estimate from the latest valid exposure and persist after reload");
 
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
   await page.evaluate(`(() => {
