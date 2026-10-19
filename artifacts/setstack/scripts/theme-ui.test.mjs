@@ -279,6 +279,35 @@ async function exerciseProfileAndMap(page, baseUrl, index) {
     const client = (await storedState(page)).clients.find((item) => item.id === clientId);
     return client?.bodyweight.at(-1)?.kg;
   }, (weight) => weight === Number(measurement));
+  const achievementSummary = await page.evaluate(`({
+    count: document.querySelector('[data-testid="achievement-count"]')?.textContent,
+    categories: document.querySelectorAll('[role="tablist"][aria-label="Achievement categories"] [role="tab"]').length,
+    measurementBadge: document.querySelector('[data-testid="achievement-badge-first-body-measurement"]')?.getAttribute("aria-label"),
+    totalVisibleBadges: document.querySelectorAll('[data-testid^="achievement-badge-"]').length
+  })`);
+  assert.match(achievementSummary.count ?? "", /\d+ \/ 15 earned/, "The gallery should show the earned count out of supported milestones");
+  assert.equal(achievementSummary.categories, 4, "All four achievement categories should be available");
+  assert.equal(achievementSummary.totalVisibleBadges, 5, "The selected category should show only its five workout badges");
+  await page.click("achievement-category-progress");
+  const progressCategory = await page.evaluate(`({
+    visibleBadges: document.querySelectorAll('[data-testid^="achievement-badge-"]').length,
+    measurementBadge: document.querySelector('[data-testid="achievement-badge-first-body-measurement"]')?.getAttribute("aria-label")
+  })`);
+  assert.equal(progressCategory.visibleBadges, 2, "The progress category should display its two data-supported badges");
+  assert.match(progressCategory.measurementBadge ?? "", /earned/, "The saved bodyweight entry should unlock its measurement badge");
+  await page.click("achievement-badge-first-body-measurement");
+  await waitFor("body measurement achievement detail", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="achievement-detail-first-body-measurement"] [data-testid="achievement-milestone"]\')',
+  ));
+  const achievementDetail = await page.evaluate(`({
+    title: document.querySelector('#workspace-modal-title')?.textContent,
+    date: document.querySelector('[data-testid="achievement-unlock-date"]')?.textContent,
+    milestone: document.querySelector('[data-testid="achievement-milestone"]')?.textContent
+  })`);
+  assert.match(achievementDetail.title ?? "", /First Body Measurement/);
+  assert.ok(achievementDetail.date, "An earned badge should show its unlock date");
+  assert.match(achievementDetail.milestone ?? "", /First dated bodyweight entry/);
+  await page.click("button-close-dialog");
 
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
   assert.equal(
@@ -2459,4 +2488,11 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   })`);
   assert.equal(emptyOverview.strength, true, "The strength card should not invent a performance history");
   assert.equal(emptyOverview.weeklyTotal, "0 sets", "The empty client should show zero recorded working sets");
+  await navigate(page, `${baseUrl}/clients/${clientId}`, "button-client-start-session");
+  const emptyAchievement = await page.evaluate(`({
+    count: document.querySelector('[data-testid="achievement-count"]')?.textContent,
+    firstWorkout: document.querySelector('[data-testid="achievement-badge-first-workout"]')?.getAttribute("aria-label")
+  })`);
+  assert.match(emptyAchievement.count ?? "", /^\d+ \/ 15 earned$/, "Empty workout history should still render the gallery without an error");
+  assert.match(emptyAchievement.firstWorkout ?? "", /locked/, "A client with no saved workouts must not receive a workout achievement");
 });

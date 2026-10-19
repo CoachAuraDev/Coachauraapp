@@ -70,12 +70,20 @@ function formatKg(value: number): string {
 }
 
 function setMilestone(exercise: ExerciseLog, set: SetLog, e1rm: number): string {
-  return `${exercise.name}: ${formatKg(set.weight)} × ${set.reps} reps; estimated 1RM ${formatKg(e1rm)}.`;
+  const recordedSet = `${exercise.name}: ${formatKg(set.weight)} × ${set.reps} reps`;
+  return e1rm > 0
+    ? `${recordedSet}; estimated 1RM ${formatKg(e1rm)}.`
+    : `${recordedSet}; no positive load was saved, so estimated 1RM is unavailable.`;
+}
+
+function validWorkingSets(sets: SetLog[]): SetLog[] {
+  return workingSets(sets).filter((set) =>
+    Number.isFinite(set.reps) && set.reps > 0 && Number.isFinite(set.weight) && set.weight >= 0);
 }
 
 function qualifiesAsWorkout(session: SessionLog): boolean {
   return Array.isArray(session.exercises)
-    && session.exercises.some((exercise) => Array.isArray(exercise.sets) && workingSets(exercise.sets).length > 0);
+    && session.exercises.some((exercise) => Array.isArray(exercise.sets) && validWorkingSets(exercise.sets).length > 0);
 }
 
 function orderedSessions(client: Client, today: string): OrderedSession[] {
@@ -131,13 +139,13 @@ export function calculateAchievements(client: Client, today = todayIso()): Achie
   let firstE1rmImprovement: SetEvent | null = null;
   for (const { session } of sessions) {
     for (const exercise of session.exercises) {
-      for (const set of workingSets(exercise.sets)) {
+      for (const set of validWorkingSets(exercise.sets)) {
         const e1rm = oneRm(set.reps, set.weight, set.rpe);
-        if (!Number.isFinite(e1rm) || e1rm <= 0) continue;
         const event = { date: session.date, exercise, set, e1rm };
-        if (!firstRecord) firstRecord = event;
         const liftId = liftMilestoneId(exercise.name);
         if (liftId && !firstLift.has(liftId)) firstLift.set(liftId, event);
+        if (!Number.isFinite(e1rm) || e1rm <= 0) continue;
+        if (!firstRecord) firstRecord = event;
         const previousBest = bestByExercise.get(exercise.id);
         if (previousBest !== undefined && e1rm > previousBest && !firstE1rmImprovement) firstE1rmImprovement = event;
         if (previousBest === undefined || e1rm > previousBest) bestByExercise.set(exercise.id, e1rm);
@@ -145,7 +153,11 @@ export function calculateAchievements(client: Client, today = todayIso()): Achie
     }
   }
 
-  const savedRecords = personalRecords({ ...client, sessions: sessions.map(({ session }) => session) });
+  const recordSessions = sessions.map(({ session }) => ({
+    ...session,
+    exercises: session.exercises.map((exercise) => ({ ...exercise, sets: validWorkingSets(exercise.sets) })),
+  }));
+  const savedRecords = personalRecords({ ...client, sessions: recordSessions });
   if (firstRecord && savedRecords.some((record) => record.e1rm > 0)) {
     addAward(awards, "first-personal-record", firstRecord.date, setMilestone(firstRecord.exercise, firstRecord.set, firstRecord.e1rm));
   }
@@ -259,6 +271,12 @@ export function trackClientAchievements(
   const ledger = result.ledger;
   const initializing = !ledger.initialized;
   let changed = false;
+  const activeClientIds = new Set(clients.map((client) => client.id));
+  for (const clientId of Object.keys(ledger.clients)) {
+    if (activeClientIds.has(clientId)) continue;
+    delete ledger.clients[clientId];
+    changed = true;
+  }
   for (const client of clients) {
     const current = calculateAchievements(client, today);
     const existing = ledger.clients[client.id];

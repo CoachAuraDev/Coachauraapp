@@ -78,7 +78,7 @@ export function ClientAchievements({ client }: { client: Client }) {
   };
 
   return (
-    <section className="rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] p-5" data-testid="achievements-section">
+    <section className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5" data-testid="achievements-section">
       {celebration && <div className="achievement-celebration mb-5 rounded-xl border border-[hsl(var(--primary)/.4)] bg-[hsl(var(--accent))] p-4" role="status" aria-live="polite" data-testid="achievement-celebration">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[hsl(var(--primary)/.45)] bg-[hsl(var(--card))] text-[hsl(var(--primary))]"><Sparkles size={18}/></span>
