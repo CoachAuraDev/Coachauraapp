@@ -660,6 +660,71 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients) {
     "The 7-day direct and indirect muscle totals must persist after reload");
   assert.deepEqual(await clientSnapshot("seed-leo"), otherBefore,
     "Another client's charts must remain unchanged after reload");
+
+  const beforeWarmupState = await storedState(page);
+  const warmupBaseline = await clientSnapshot(fixture.id);
+  const warmupOtherBaseline = await clientSnapshot("seed-leo");
+  const expectedWarmupClients = structuredClone(beforeWarmupState.clients);
+  const expectedWarmupBench = expectedWarmupClients.find((client) => client.id === fixture.id)
+    .sessions.find((item) => item.id === session.id)
+    .exercises.find((exercise) => exercise.id === bench.id);
+
+  await openSavedSessionEditor(page, baseUrl, session.id, fixture.id);
+  await page.click(`button-editor-add-set-${bench.id}`);
+  await waitFor("new saved-workout warm-up row", () => page.evaluate(
+    `document.querySelectorAll('[data-testid="editor-exercise-${bench.id}"] [data-testid^="editor-set-"]').length`,
+  ), (count) => count === expectedWarmupBench.sets.length + 1);
+  const warmupSetId = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const rows = [...(section?.querySelectorAll('[data-testid^="editor-set-"]') ?? [])];
+    return rows.at(-1)?.getAttribute("data-testid")?.replace("editor-set-", "");
+  })()`);
+  assert.ok(warmupSetId, "The newly added warm-up should have an editor row");
+  const warmupWeightKg = 25;
+  const warmupReps = 12;
+  const warmupRir = 4;
+  await page.fill(`input-editor-weight-${warmupSetId}`,
+    String(Number(toDisplay(warmupWeightKg, beforeWarmupState.unit).toFixed(2))));
+  await page.fill(`input-editor-reps-${warmupSetId}`, String(warmupReps));
+  await page.fill(`input-editor-rir-${warmupSetId}`, String(warmupRir));
+  await page.fill(`select-editor-kind-${warmupSetId}`, "warmup");
+  await page.click("button-editor-save");
+  await waitFor("new saved-workout warm-up persisted", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === fixture.id);
+    return client?.sessions.find((item) => item.id === session.id)
+      ?.exercises.find((exercise) => exercise.id === bench.id)?.sets.length;
+  }, (count) => count === expectedWarmupBench.sets.length + 1);
+
+  const afterWarmupState = await storedState(page);
+  const storedWarmup = afterWarmupState.clients.find((client) => client.id === fixture.id)
+    ?.sessions.find((item) => item.id === session.id)
+    ?.exercises.find((exercise) => exercise.id === bench.id)?.sets.at(-1);
+  assert.ok(storedWarmup?.id && !expectedWarmupBench.sets.some((set) => set.id === storedWarmup.id),
+    "The added warm-up should have its own persisted set ID");
+  const expectedWarmup = {
+    id: storedWarmup.id,
+    weight: warmupWeightKg,
+    reps: warmupReps,
+    rpe: 10 - warmupRir,
+    kind: "warmup",
+  };
+  assert.deepEqual(storedWarmup, expectedWarmup,
+    "The added warm-up must retain its entered load, reps, effort, and type");
+  expectedWarmupBench.sets.push(expectedWarmup);
+  assert.deepEqual(afterWarmupState.clients, expectedWarmupClients,
+    "Saving a warm-up should store it without changing unrelated workout data");
+  assert.deepEqual(await clientSnapshot(fixture.id), warmupBaseline,
+    "A newly added warm-up must not change working, direct/indirect, or weighted muscle totals");
+  assert.deepEqual(await clientSnapshot("seed-leo"), warmupOtherBaseline,
+    "Saving a warm-up must not change another client's muscle charts");
+
+  await reloadAndWait(page, "reloaded added warm-up muscle dashboard", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedWarmupClients,
+    "The added warm-up and only its fixture workout must persist after reload");
+  assert.deepEqual(await clientSnapshot(fixture.id), warmupBaseline,
+    "All muscle totals must remain unchanged after reloading the saved warm-up");
+  assert.deepEqual(await clientSnapshot("seed-leo"), warmupOtherBaseline,
+    "Another client's charts must remain unchanged after reloading the warm-up");
 }
 
 async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
