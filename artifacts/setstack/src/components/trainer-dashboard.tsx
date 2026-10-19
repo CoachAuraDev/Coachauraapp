@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Library, Play, Plus, Search, Users, X, Zap, ChevronDown, History } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
+import { INDIVIDUAL_PROFILE_ID } from "@/lib/gymmane/models";
 import { clientSummary } from "@/lib/gymmane/metrics";
 import { formatLoad, isoWeekday, todayIso, WEEKDAYS } from "@/lib/gymmane/engine";
 import { weekOverview } from "@/lib/gymmane/dashboard";
@@ -52,6 +53,7 @@ function initials(n: string) { const p = n.trim().split(/\s+/); return (p[0]?.[0
 export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
   const clients = useFloor((s) => s.clients);
   const draft = useFloor((s) => s.draft);
+  const individualProfile = useFloor((s) => s.individualProfile);
   const unit = useFloor((s) => s.unit);
   const backupReminder = useBackupReminder();
   const startSession = useFloor((s) => s.startSession);
@@ -67,7 +69,8 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
   const list = rows.filter(({ client, summary }) => (status === "all" || summary.status === status) && client.name.toLocaleLowerCase().includes(query));
   const hasFilters = query.length > 0 || status !== "all";
   const clearFilters = () => { setSearch(""); setStatus("all"); };
-  const draftClient = draft ? clients.find((c) => c.id === draft.clientId) : undefined;
+  const personalDraft = draft?.clientId === INDIVIDUAL_PROFILE_ID;
+  const draftClient = draft && !personalDraft ? clients.find((c) => c.id === draft.clientId) : undefined;
   const planned = clients.flatMap((client) => {
     const rid = client.weeklyPlan?.[String(wd)];
     const routine = rid ? client.routines.find((r) => r.id === rid) : undefined;
@@ -78,7 +81,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
   const resume = () => {
     const current = useFloor.getState().draft;
     if (!current) return;
-    go(`/clients/${current.clientId}`);
+    go(current.clientId === INDIVIDUAL_PROFILE_ID ? "/" : `/clients/${current.clientId}`);
     window.dispatchEvent(new Event("setstack:resume-workout"));
   };
   const start = (clientId: string, routineId: string | null) => {
@@ -95,15 +98,16 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
     </div>
 
     {!draft && <BackupReminderCard
-      hasLocalData={clients.length > 0}
+      hasLocalData={clients.length > 0 || individualProfile.sessions.length > 0}
+      dataLabel={clients.length > 0 ? "client data" : "training data"}
       onConfirmSaved={backupReminder.recordSuccessfulExport}
       onRemindLater={backupReminder.remindLater}
     />}
 
     {(clients.length > 0 || draft) && <section className={`${card} mb-4 p-4 sm:p-5`} data-testid="card-next-workout">
       {draft ? <>
-        <p className={kicker}>Workout in progress</p>
-        <h2 className="display-font mt-2 text-2xl font-semibold">{draftClient?.name ?? "Unknown client"} · {draft.name}</h2>
+        <p className={kicker}>{personalDraft ? "Personal workout in progress" : "Workout in progress"}</p>
+        <h2 className="display-font mt-2 text-2xl font-semibold">{personalDraft ? `Your training · ${draft.name}` : `${draftClient?.name ?? "Unknown client"} · ${draft.name}`}</h2>
         <p className={`mt-1 text-sm ${muted}`}>{draft.exercises.length} exercises · {draft.exercises.reduce((n, e) => n + e.sets.length, 0)} sets logged (not yet saved)</p>
         <button className={`${primary} mt-4 w-full sm:w-auto`} onClick={resume} data-testid="button-resume-workout"><Play size={16} />Resume workout</button>
       </> : head ? <>
@@ -177,7 +181,7 @@ function QuickStart({ onClose, onStart, hasDraft }: { onClose: () => void; onSta
   </Dialog>;
 }
 
-function ExerciseLibrary({ onClose }: { onClose: () => void }) {
+export function ExerciseLibrary({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
   const pool = useMemo(() => exercisePool(), []);
   const matches = pool.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));

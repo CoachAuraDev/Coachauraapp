@@ -6,7 +6,7 @@ import { fromDisplay, formatLoad, shortDate, toDisplay } from "@/lib/gymmane/eng
 import { personalRecords } from "@/lib/gymmane/metrics";
 import { nextSetDefaults, plannedSetCount, previousExercisePerformance } from "@/lib/gymmane/workout-logging";
 import { isRapidDuplicateSubmission, type SubmissionFingerprint } from "@/lib/gymmane/submission-guard";
-import type { DraftEntry, SetLog } from "@/lib/gymmane/models";
+import { INDIVIDUAL_PROFILE_ID, individualWorkoutOwner, type DraftEntry, type SetLog } from "@/lib/gymmane/models";
 import { RestTimer } from "./rest-timer";
 import { SwipeAdjustInput } from "./swipe-adjust-input";
 import { ExerciseMuscleIllustration } from "@/components/muscle-map";
@@ -87,6 +87,7 @@ function SetRow({ set, index, exerciseIndex, unit }: { set: SetLog; index: numbe
 export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   const draft = useFloor((s) => s.draft);
   const clients = useFloor((s) => s.clients);
+  const individualProfile = useFloor((s) => s.individualProfile);
   const unit = useFloor((s) => s.unit);
   const custom = useFloor((s) => s.custom);
   const logSet = useFloor((s) => s.logSet);
@@ -201,7 +202,12 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
     return () => { document.body.style.userSelect = oldSelection; };
   }, [dragFrom]);
 
-  const client = draft ? clients.find((c) => c.id === draft.clientId) : undefined;
+  const client = useMemo(() => {
+    if (!draft) return undefined;
+    return draft.clientId === INDIVIDUAL_PROFILE_ID
+      ? individualWorkoutOwner(individualProfile)
+      : clients.find((c) => c.id === draft.clientId);
+  }, [draft?.clientId, clients, individualProfile]);
   const routine = client?.routines.find((r) => r.id === draft?.routineId);
   const active = draft?.exercises[draft.activeIndex];
   const activeId = active?.id;
@@ -212,14 +218,16 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   useEffect(() => {
     const st = useFloor.getState();
     const d = st.draft;
-    const c = st.clients.find((x) => x.id === d?.clientId);
+    const c = d?.clientId === INDIVIDUAL_PROFILE_ID
+      ? individualWorkoutOwner(st.individualProfile)
+      : st.clients.find((x) => x.id === d?.clientId);
     const ex = d?.exercises[d.activeIndex];
     if (!d || !c || !ex) return;
     const r = c.routines.find((x) => x.id === d.routineId);
     const entry = d.entries?.[ex.id] ?? nextSetDefaults(c, r, ex);
     setF(entryToFields(entry, st.unit));
     setError("");
-  }, [activeId, draft?.activeIndex, draft?.clientId, draft?.startedAt, unit, hasStored]);
+  }, [activeId, draft?.activeIndex, draft?.clientId, draft?.startedAt, unit, hasStored, individualProfile]);
 
   const previous = useMemo(() => (client && activeId ? previousExercisePerformance(client, activeId) : null), [client, activeId]);
   const recent = useMemo(() => {

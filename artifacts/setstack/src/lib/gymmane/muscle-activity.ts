@@ -1,5 +1,5 @@
 import type { CatalogExercise } from "./catalog.ts";
-import type { Client, ExerciseLog, SetLog, SessionLog } from "./models.ts";
+import type { ExerciseLog, SetLog, SessionLog, WorkoutOwner } from "./models.ts";
 
 export const MUSCLE_GROUPS = [
   { id: "chest", label: "Chest", views: ["front"] },
@@ -333,7 +333,7 @@ function mergeContributors(target: Map<string, MuscleContributor>, incoming: Map
 }
 
 export function analyzeMuscleActivity(
-  client: Client,
+  client: Pick<WorkoutOwner, "sessions">,
   exerciseLibrary: readonly CatalogExercise[],
   period: ActivityPeriod,
   today: string,

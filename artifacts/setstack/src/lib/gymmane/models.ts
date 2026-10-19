@@ -77,6 +77,25 @@ export type Client = {
   muscleTargets?: Partial<Record<MuscleTargetGroup, number>>;
 };
 
+/** Stable owner ID keeps individual sessions distinct from every trainer-managed client. */
+export const INDIVIDUAL_PROFILE_ID = "__coachaura_individual__";
+export type TrainingMode = "trainer" | "individual";
+export type IndividualProfile = {
+  restSeconds: number;
+  sessions: SessionLog[];
+};
+/** The smallest shared shape needed by workout logging and saved-session analytics. */
+export type WorkoutOwner = Pick<Client, "id" | "name" | "restSeconds" | "sessions" | "routines">;
+export function individualWorkoutOwner(profile: IndividualProfile): WorkoutOwner {
+  return {
+    id: INDIVIDUAL_PROFILE_ID,
+    name: "My training",
+    restSeconds: profile.restSeconds,
+    sessions: profile.sessions,
+    routines: [],
+  };
+}
+
 export type Draft = {
   clientId: string;
   routineId: string | null;

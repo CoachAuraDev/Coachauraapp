@@ -1,4 +1,4 @@
-import type { Client, DraftEntry, ExerciseLog, Routine, SessionLog, SetLog } from "./models.ts";
+import type { DraftEntry, ExerciseLog, Routine, SessionLog, SetLog, WorkoutOwner } from "./models.ts";
 import { SET_KINDS } from "./engine.ts";
 
 export function validLoggedSet(set: Omit<SetLog, "id">): boolean {
@@ -9,8 +9,8 @@ export function validLoggedSet(set: Omit<SetLog, "id">): boolean {
 }
 
 /** Date ordering with insertion order as the same-day tie breaker. Returns copies. */
-export function previousExercisePerformance(client: Client, exerciseId: string): {date: string; sets: SetLog[]} | null {
-  const sessions = client.sessions.map((session, index) => ({ session, index }))
+export function previousExercisePerformance(owner: WorkoutOwner, exerciseId: string): {date: string; sets: SetLog[]} | null {
+  const sessions = owner.sessions.map((session, index) => ({ session, index }))
     .filter(({ session }) => /^\d{4}-\d{2}-\d{2}$/.test(session.date))
     .sort((a, b) => b.session.date.localeCompare(a.session.date) || b.index - a.index);
   for (const { session } of sessions) {
@@ -27,9 +27,9 @@ export function plannedSetCount(routine: Routine | undefined, exerciseId: string
   return routine?.sets[exerciseId] ?? routine?.plan[exerciseId]?.length ?? 3;
 }
 
-export function nextSetDefaults(client: Client, routine: Routine | undefined, exercise: ExerciseLog): DraftEntry {
+export function nextSetDefaults(owner: WorkoutOwner, routine: Routine | undefined, exercise: ExerciseLog): DraftEntry {
   const working = exercise.sets.filter((set) => set.kind !== "warmup" && validLoggedSet(set));
-  const previous = previousExercisePerformance(client, exercise.id)?.sets ?? [];
+  const previous = previousExercisePerformance(owner, exercise.id)?.sets ?? [];
   const planned = routine?.plan[exercise.id]?.[exercise.sets.length];
   const last = previous[working.length] ?? previous.at(-1) ?? working.at(-1);
   return {

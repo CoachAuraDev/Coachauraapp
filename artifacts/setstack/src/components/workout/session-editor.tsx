@@ -3,14 +3,14 @@ import { Check, ChevronDown, Plus, X } from "lucide-react";
 import { exercisePool, useFloor } from "@/lib/gymmane/store";
 import { ExerciseMuscleIllustration } from "@/components/muscle-map";
 import { KIND_LABEL, SET_KINDS, fromDisplay, toDisplay, uid, type SetKind } from "@/lib/gymmane/engine";
-import type { Client, ExerciseLog, SessionLog, SetLog } from "@/lib/gymmane/models";
+import type { WorkoutOwner, ExerciseLog, SessionLog, SetLog } from "@/lib/gymmane/models";
 import { Modal, fieldClass, labelClass, primaryBtn, quietBtn, rirText } from "./shared";
 import { isValidCalendarDate } from "@/lib/gymmane/calendar-date";
 
 type Row = { key: string; orig?: SetLog; weight: string; reps: string; rir: string; kind: SetKind; init: string };
 const wText = (kg: number, unit: "kg" | "lb") => String(Number(toDisplay(kg, unit).toFixed(2)));
 const sig = (r: { weight: string; reps: string; rir: string; kind: SetKind }) => `${r.weight}|${r.reps}|${r.rir}|${r.kind}`;
-export function SessionEditor({ client, session, onClose }: { client: Client; session: SessionLog; onClose: () => void }) {
+export function SessionEditor({ client, session, onClose }: { client: WorkoutOwner; session: SessionLog; onClose: () => void }) {
   const unit = useFloor((s) => s.unit);
   const updateSession = useFloor((s) => s.updateSession);
   const setNotice = useFloor((s) => s.setNotice);

@@ -7,10 +7,17 @@ import {
   UserRound, Users, Weight, X, Zap,
 } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
-import type { Client, Routine, SessionLog } from "@/lib/gymmane/models";
+import {
+  INDIVIDUAL_PROFILE_ID,
+  individualWorkoutOwner,
+  type Client,
+  type Routine,
+  type SessionLog,
+  type TrainingMode,
+} from "@/lib/gymmane/models";
 import { fromDisplay, formatLoad, isoWeekday, shortDate, shiftIso, todayIso, toDisplay, uid, weekStart, WEEKDAYS } from "@/lib/gymmane/engine";
 import { clientSummary, personalRecords, bestSetOneRm } from "@/lib/gymmane/metrics";
-import { TrainerDashboard } from "@/components/trainer-dashboard";
+import { ExerciseLibrary, TrainerDashboard } from "@/components/trainer-dashboard";
 import { CustomExerciseMuscles } from "@/components/custom-exercise-muscles";
 import { Modal, fieldClass, btn, primaryBtn, quietBtn, labelClass } from "@/components/workout/shared";
 import { WorkoutDrawer } from "@/components/workout/workout-logger";
@@ -36,6 +43,7 @@ const RoutineModal = lazy(() => import("@/components/workout/routine-editor").th
 const SessionEditor = lazy(() => import("@/components/workout/session-editor").then((module) => ({ default: module.SessionEditor })));
 const MuscleActivityDashboard = lazy(() => import("@/components/muscle-activity-dashboard").then((module) => ({ default: module.MuscleActivityDashboard })));
 const ClientOverviewVisualizations = lazy(() => import("@/components/client-overview-visualizations").then((module) => ({ default: module.ClientOverviewVisualizations })));
+const IndividualDashboard = lazy(() => import("@/components/individual-dashboard").then((module) => ({ default: module.IndividualDashboard })));
 
 function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <section className={`rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] shadow-[0_2px_8px_rgba(35,55,47,.035)] ${className}`}>{children}</section>;
@@ -62,6 +70,8 @@ function AppShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const draft = useFloor((s) => s.draft);
   const clients = useFloor((s) => s.clients);
+  const trainingMode = useFloor((s) => s.trainingMode);
+  const homeLabel = trainingMode === "individual" ? "My training" : "Today";
   const [drawer, setDrawer] = useState(false);
   const [askShell, shellConfirm] = useConfirm();
   useEffect(() => drawer ? registerNativeBackHandler(() => setDrawer(false)) : undefined, [drawer]);
@@ -79,19 +89,19 @@ function AppShell({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [notice]);
   const items = [
-    { href: "/", label: "Today", icon: Activity },
+    { href: "/", label: homeLabel, icon: Activity },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
   const currentPath = location.split("?")[0];
-  const nav = <><Link href="/" onClick={() => setDrawer(false)} aria-current={currentPath === "/" ? "page" : undefined} data-testid="link-dashboard" className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${currentPath === "/" ? "bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-primary))]" : "text-[hsl(var(--sidebar-foreground))]/75 hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-foreground))]"}`}><Activity size={17}/> Today</Link>
+  const nav = <><Link href="/" onClick={() => setDrawer(false)} aria-current={currentPath === "/" ? "page" : undefined} data-testid="link-dashboard" className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${currentPath === "/" ? "bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-primary))]" : "text-[hsl(var(--sidebar-foreground))]/75 hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-foreground))]"}`}><Activity size={17}/> {homeLabel}</Link>
     <div className="mb-2 mt-7 px-3 text-[10px] font-semibold uppercase tracking-[.18em] text-[hsl(var(--muted-foreground))]">Workspace</div>
     {items.slice(1).map(({ href, label, icon: Icon }) => <Link key={href} href={href} onClick={() => setDrawer(false)} aria-current={currentPath === href ? "page" : undefined} data-testid="link-settings" className={`mb-1 flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${currentPath === href ? "bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-primary))]" : "text-[hsl(var(--sidebar-foreground))]/75 hover:bg-[hsl(var(--sidebar-accent))] hover:text-[hsl(var(--sidebar-foreground))]"}`}><Icon size={17}/> {label}</Link>)}
-    <div className="mb-2 mt-7 flex items-center justify-between px-3 text-[10px] font-semibold uppercase tracking-[.18em] text-[hsl(var(--muted-foreground))]"><span>Athletes</span><span className="mono">{clients.length}</span></div>
-    <div className="max-h-[35vh] space-y-1 overflow-y-auto">{clients.slice(0, 8).map((c) => <Link key={c.id} href={`/clients/${c.id}`} onClick={() => setDrawer(false)} aria-current={currentPath === `/clients/${c.id}` ? "page" : undefined} data-testid={`link-athlete-${c.id}`} className={`flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 text-sm ${currentPath === `/clients/${c.id}` ? "bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-foreground))]" : "text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-accent))]"}`}><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[hsl(var(--sidebar-foreground))]/10 text-[10px] font-bold">{c.name.split(" ").map(p => p[0]).slice(0,2).join("")}</span><span className="truncate">{c.name}</span></Link>)}</div>
+     {trainingMode === "trainer" && <><div className="mb-2 mt-7 flex items-center justify-between px-3 text-[10px] font-semibold uppercase tracking-[.18em] text-[hsl(var(--muted-foreground))]"><span>Athletes</span><span className="mono">{clients.length}</span></div>
+     <div className="max-h-[35vh] space-y-1 overflow-y-auto">{clients.slice(0, 8).map((c) => <Link key={c.id} href={`/clients/${c.id}`} onClick={() => setDrawer(false)} aria-current={currentPath === `/clients/${c.id}` ? "page" : undefined} data-testid={`link-athlete-${c.id}`} className={`flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 text-sm ${currentPath === `/clients/${c.id}` ? "bg-[hsl(var(--sidebar-accent))] text-[hsl(var(--sidebar-foreground))]" : "text-[hsl(var(--sidebar-foreground))]/70 hover:bg-[hsl(var(--sidebar-accent))]"}`}><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[hsl(var(--sidebar-foreground))]/10 text-[10px] font-bold">{c.name.split(" ").map(p => p[0]).slice(0,2).join("")}</span><span className="truncate">{c.name}</span></Link>)}</div></>}
     <div className="mt-auto pt-8"><div className="rounded-2xl border border-[hsl(var(--sidebar-border))] bg-[hsl(var(--sidebar-accent))]/60 p-4"><div className="flex items-center gap-2 text-[hsl(var(--sidebar-primary))]"><ShieldCheck size={15}/><span className="text-xs font-semibold">Your data stays yours</span></div><p className="mt-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Stored only {isAndroidApp()?"in this app on this device":"in this browser"}. Export a backup before switching devices.</p></div><p className="mono mt-5 text-[9px] leading-relaxed text-[hsl(var(--muted-foreground))]">CoachAura · Training engine derived from GymMane · GPL-3.0</p></div></>;
   return <div className="grain min-h-[100dvh] bg-[hsl(var(--background))] text-[hsl(var(--foreground))]"><aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col bg-[hsl(var(--sidebar))] px-4 py-5 text-[hsl(var(--sidebar-foreground))] lg:flex"><BrandLockup className="mb-6 w-full rounded-xl py-1 hover:bg-[hsl(var(--sidebar-accent))]"/>{nav}</aside>
     {drawer && <div data-testid="mobile-navigation-overlay" className="fixed inset-0 z-40 bg-black/40 lg:hidden" onClick={() => setDrawer(false)}><aside onClick={e => e.stopPropagation()} className="flex h-full w-[min(84vw,300px)] flex-col bg-[hsl(var(--sidebar))] p-4 text-[hsl(var(--sidebar-foreground))]"><div className="mb-7 flex items-center justify-between gap-3"><BrandLockup compact testId="link-brand-drawer" className="min-w-0 flex-1 rounded-xl py-1 hover:bg-[hsl(var(--sidebar-accent))]"/><button onClick={() => setDrawer(false)} aria-label="Close menu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg hover:bg-[hsl(var(--sidebar-accent))]"><X/></button></div>{nav}</aside></div>}
-      <div className="lg:pl-[248px]"><header className="sticky top-0 z-20 flex h-[62px] items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 backdrop-blur-md sm:px-7"><div className="flex items-center gap-3"><button className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] lg:hidden" aria-label="Open navigation" onClick={() => setDrawer(true)} data-testid="button-open-nav"><Menu size={19}/></button><BrandLockup compact testId="link-brand-mobile" className="ml-1 rounded-lg px-1 py-0.5 lg:hidden"/><span className="hidden sm:inline text-sm text-[hsl(var(--muted-foreground))]">Personal training, kept in motion.</span></div><div className="flex items-center gap-2">{draft && <Link href={`/clients/${draft.clientId}`} onClick={()=>window.dispatchEvent(new Event("setstack:resume-workout"))} className="inline-flex items-center gap-2 rounded-xl bg-[hsl(var(--secondary))] px-3 py-2 text-xs font-bold text-[hsl(var(--secondary-foreground))]" data-testid="link-active-session"><span className="h-2 w-2 animate-pulse rounded-full bg-[hsl(var(--primary))]"/><span className="hidden sm:inline">Session in progress</span><span className="sm:hidden">Logging</span><ArrowRight size={14}/></Link>}<div className="hidden rounded-xl border border-[hsl(var(--border))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] md:block"><span className="mono">{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span></div></div></header><main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-7 sm:py-8"><div key={location.split("?")[0]} className="page-enter">{children}</div></main></div>
+       <div className="lg:pl-[248px]"><header className="sticky top-0 z-20 flex h-[62px] items-center justify-between border-b border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-4 backdrop-blur-md sm:px-7"><div className="flex items-center gap-3"><button className="flex h-11 w-11 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))] lg:hidden" aria-label="Open navigation" onClick={() => setDrawer(true)} data-testid="button-open-nav"><Menu size={19}/></button><BrandLockup compact testId="link-brand-mobile" className="ml-1 rounded-lg px-1 py-0.5 lg:hidden"/><span className="hidden sm:inline text-sm text-[hsl(var(--muted-foreground))]">{trainingMode === "individual" ? "Your training, kept in motion." : "Personal training, kept in motion."}</span></div><div className="flex items-center gap-2">{draft && <Link href={draft.clientId === INDIVIDUAL_PROFILE_ID ? "/" : `/clients/${draft.clientId}`} onClick={()=>window.dispatchEvent(new Event("setstack:resume-workout"))} className="inline-flex items-center gap-2 rounded-xl bg-[hsl(var(--secondary))] px-3 py-2 text-xs font-bold text-[hsl(var(--secondary-foreground))]" data-testid="link-active-session"><span className="h-2 w-2 animate-pulse rounded-full bg-[hsl(var(--primary))]"/><span className="hidden sm:inline">Session in progress</span><span className="sm:hidden">Logging</span><ArrowRight size={14}/></Link>}<div className="hidden rounded-xl border border-[hsl(var(--border))] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))] md:block"><span className="mono">{new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span></div></div></header><main className="mx-auto max-w-[1440px] px-4 py-6 sm:px-7 sm:py-8"><div key={location.split("?")[0]} className="page-enter">{children}</div></main></div>
     <WorkoutDrawer ask={askShell}/>{shellConfirm}
     {notice && <div role="status" className="pointer-events-none fixed bottom-20 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-[hsl(var(--primary))] px-4 py-3 text-sm font-medium text-[hsl(var(--primary-foreground))] shadow-xl sm:bottom-6" data-testid="status-notice">{notice}</div>}
   </div>;
@@ -104,6 +114,44 @@ function Header({ eyebrow, title, subtitle, action }: { eyebrow: string; title: 
 function Dashboard() {
   const [modal, setModal] = useState(false);
   const [paywall, setPaywall] = useState(false);
+  const [library, setLibrary] = useState(false);
+  const [editSession, setEditSession] = useState<SessionLog | null>(null);
+  const trainingMode = useFloor((s) => s.trainingMode);
+  const profile = useFloor((s) => s.individualProfile);
+  const unit = useFloor((s) => s.unit);
+  const draft = useFloor((s) => s.draft);
+  const startSession = useFloor((s) => s.startSession);
+  const deleteSession = useFloor((s) => s.deleteSession);
+  const setNotice = useFloor((s) => s.setNotice);
+  const [ask, confirmNode] = useConfirm();
+  if (trainingMode === "individual") {
+    return <>
+      <Suspense fallback={<Card className="p-5"><p role="status" className="text-sm text-[hsl(var(--muted-foreground))]">Loading your training overview…</p></Card>}>
+        <IndividualDashboard
+          profile={profile}
+          unit={unit}
+          draft={draft}
+          onStartWorkout={() => startSession(INDIVIDUAL_PROFILE_ID, null)}
+          onOpenExerciseLibrary={() => setLibrary(true)}
+          onEditSession={setEditSession}
+          onDeleteSession={(session) => ask({
+            title: "Delete personal workout?",
+            message: "Delete this workout from your personal history? This cannot be undone.",
+            confirmLabel: "Delete workout",
+            onConfirm: () => {
+              deleteSession(INDIVIDUAL_PROFILE_ID, session.id);
+              setNotice("Personal workout deleted.");
+            },
+          })}
+        />
+      </Suspense>
+      {library && <ExerciseLibrary onClose={() => setLibrary(false)} />}
+      {editSession && <Suspense fallback={<Modal title="Opening workout editor…" onClose={() => setEditSession(null)}><p role="status">Loading editor…</p></Modal>}>
+        <SessionEditor client={individualWorkoutOwner(profile)} session={editSession} onClose={() => setEditSession(null)}/>
+      </Suspense>}
+      {confirmNode}
+    </>;
+  }
   return <>
     <TrainerDashboard onAddClient={() => setModal(true)}/>
     {modal && <ClientModal onClose={() => setModal(false)} onPaywall={() => setPaywall(true)}/>}
@@ -228,6 +276,9 @@ function SettingsPage() {
   const setUnit=useFloor(s=>s.setUnit);
   const appearance=useFloor(s=>s.appearance);
   const setAppearance=useFloor(s=>s.setAppearance);
+  const trainingMode=useFloor(s=>s.trainingMode);
+  const setTrainingMode=useFloor(s=>s.setTrainingMode);
+  const individualProfile=useFloor(s=>s.individualProfile);
   const resetDemo=useFloor(s=>s.resetDemo);
   const backupReminder=useBackupReminder();
   const [status,setStatus]=useState("");
@@ -270,16 +321,36 @@ function SettingsPage() {
               ))}
             </div>
          </Card>
+          <Card className="p-5 sm:p-6" data-testid="card-training-mode">
+            <SectionTitle kicker="Workspace" title="Training Mode"/>
+            <p className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose how you use CoachAura. Your personal workouts are stored separately and never count toward the client limit.</p>
+            <div role="group" aria-label="Training mode" className="grid gap-2 sm:grid-cols-2" data-testid="select-training-mode">
+              {([
+                { value: "trainer", label: "Personal Trainer Mode", description: "Manage clients and their training." },
+                { value: "individual", label: "Individual Mode", description: "Track your own workouts and progress." },
+              ] as const satisfies readonly { value: TrainingMode; label: string; description: string }[]).map((option) => (
+                <button key={option.value} type="button" aria-pressed={trainingMode === option.value}
+                  onClick={() => setTrainingMode(option.value)}
+                  className={`flex min-h-[76px] items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--ring))] ${trainingMode === option.value ? "border-[hsl(var(--primary))] bg-[hsl(var(--accent))]" : "border-[hsl(var(--border))] bg-[hsl(var(--background))] hover:bg-[hsl(var(--muted))]"}`}
+                  data-testid={`button-training-mode-${option.value}`}>
+                  <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${trainingMode === option.value ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" : "border-[hsl(var(--muted-foreground))]"}`}>
+                    {trainingMode === option.value && <Check size={13}/>}
+                  </span>
+                  <span><span className="block text-sm font-semibold">{option.label}</span><span className="mt-1 block text-xs text-[hsl(var(--muted-foreground))]">{option.description}</span></span>
+                </button>
+              ))}
+            </div>
+          </Card>
          <Card className="p-5 sm:p-6"><SectionTitle kicker="Display preferences" title="Training units"/><p className="mb-4 max-w-lg text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Choose how loads appear in the workspace. Stored values stay in kilograms so your training history remains consistent.</p><div className="flex max-w-sm gap-2 rounded-xl bg-[hsl(var(--muted))] p-1"><button onClick={()=>setUnit("kg")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="kg"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-kg">Kilograms · kg</button><button onClick={()=>setUnit("lb")} className={`flex-1 rounded-lg py-2.5 text-sm font-bold ${unit==="lb"?"bg-[hsl(var(--card))] shadow-sm":""}`} data-testid="button-unit-lb">Pounds · lb</button></div></Card>
         <Card className="p-5 sm:p-6">
           <SectionTitle kicker="Portable data" title="Backup & restore"/>
-          <p className="mb-4 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your workspace is saved only in {native?"this app's":"this browser's"} local storage. Backups are saved to a location you choose; CoachAura does not upload them. {native&&"Browser and APK storage are separate, so import a browser backup to transfer clients."}</p>
+          <p className="mb-4 max-w-xl text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your workspace is saved only in {native?"this app's":"this browser's"} local storage. Backups are saved to a location you choose; CoachAura does not upload them. {native&&"Browser and APK storage are separate, so import a browser backup to transfer your data."}</p>
           <div className="mb-4 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3"><p className="mono mb-1 text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Backup status</p><BackupStatusText timestamp={backupReminder.state.lastSuccessfulExportAt}/></div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><ShieldCheck size={19}/></div>
               <h3 className="mt-3 font-semibold">Export a backup</h3>
-              <p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Includes clients, measurements, notes, completed sessions, custom exercises, templates, current preferences and an unfinished workout.</p>
+              <p className="mt-1 min-h-[36px] text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">Includes clients, measurements, notes, trainer and personal workouts, custom exercises, templates, mode and theme preferences, and an unfinished workout.</p>
               <BackupExportAction buttonLabel="Export Backup" buttonClassName={`${quietBtn} w-full`} testId="button-export-backup" onConfirmSaved={backupReminder.recordSuccessfulExport}/>
             </div>
             <div className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
@@ -312,8 +383,8 @@ function SettingsPage() {
           {billing.message&&<p role="status" className="mt-3 rounded-xl bg-[hsl(var(--muted))] px-3 py-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]" data-testid="status-entitlement">{billing.message}</p>}
           {billing.price&&<p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">Current Google Play price: <span className="font-semibold text-[hsl(var(--foreground))]">{billing.price}</span> · one-time</p>}
         </Card>
-        <Card className="overflow-hidden"><div className="bg-[hsl(var(--primary))] p-5 text-[hsl(var(--primary-foreground))]"><div className="flex items-start justify-between"><div><p className="mono text-[10px] uppercase tracking-widest opacity-60">Local-first by design</p><h2 className="display-font mt-3 text-2xl font-semibold">One browser.<br/>Your whole floor.</h2></div><ShieldCheck size={22} className="text-[hsl(var(--secondary))]"/></div><p className="mt-3 max-w-sm text-sm leading-relaxed opacity-75">CoachAura works without an internet service. It does not use an account or sync data to the cloud.</p></div><div className="space-y-3 p-5"><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><Users size={15}/></span><span className="flex-1">Athletes on this browser</span><span className="mono font-semibold">{clients.length}</span></div><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><ClipboardList size={15}/></span><span className="flex-1">Training sessions saved</span><span className="mono font-semibold">{clients.reduce((n,c)=>n+c.sessions.length,0)}</span></div></div></Card>
-        <Card className="border-[hsl(var(--destructive))]/25 p-5"><p className="mono text-[10px] uppercase tracking-widest text-[hsl(var(--destructive))]">Demo data</p><h3 className="display-font mt-2 text-lg font-semibold">Reset the demo floor</h3><p className="mt-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">The starter athletes are clearly marked as demo. Reset brings the original examples back and removes local changes.</p><button onClick={reset} className={`${quietBtn} mt-4 text-[hsl(var(--destructive))]`} data-testid="button-reset-demo"><Activity size={15}/>Reset demo data</button></Card>
+        <Card className="overflow-hidden"><div className="bg-[hsl(var(--primary))] p-5 text-[hsl(var(--primary-foreground))]"><div className="flex items-start justify-between"><div><p className="mono text-[10px] uppercase tracking-widest opacity-60">Local-first by design</p><h2 className="display-font mt-3 text-2xl font-semibold">One browser.<br/>Your whole floor.</h2></div><ShieldCheck size={22} className="text-[hsl(var(--secondary))]"/></div><p className="mt-3 max-w-sm text-sm leading-relaxed opacity-75">CoachAura works without an internet service. It does not use an account or sync data to the cloud.</p></div><div className="space-y-3 p-5"><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><Users size={15}/></span><span className="flex-1">Athletes on this browser</span><span className="mono font-semibold">{clients.length}</span></div><div className="flex items-center gap-3 text-sm"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--muted))]"><ClipboardList size={15}/></span><span className="flex-1">Training sessions saved</span><span className="mono font-semibold">{clients.reduce((n,c)=>n+c.sessions.length,0)+individualProfile.sessions.length}</span></div></div></Card>
+        <Card className="border-[hsl(var(--destructive))]/25 p-5"><p className="mono text-[10px] uppercase tracking-widest text-[hsl(var(--destructive))]">Demo data</p><h3 className="display-font mt-2 text-lg font-semibold">Reset the demo floor</h3><p className="mt-2 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">The starter athletes are clearly marked as demo. Reset restores trainer examples and removes trainer data; personal workout history and mode settings are kept.</p><button onClick={reset} className={`${quietBtn} mt-4 text-[hsl(var(--destructive))]`} data-testid="button-reset-demo"><Activity size={15}/>Reset demo data</button></Card>
         <div className="px-1 text-[10px] leading-relaxed text-[hsl(var(--muted-foreground))]">Training engine derived from GymMane by InlitX and contributors. Licensed under GNU GPL-3.0. See included LICENSE and third_party/gymmane/NOTICE.</div>
       </div>
     </div>

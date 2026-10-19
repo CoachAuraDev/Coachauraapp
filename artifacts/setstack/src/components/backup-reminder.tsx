@@ -126,10 +126,12 @@ export function BackupReminderCard({
   hasLocalData,
   onConfirmSaved,
   onRemindLater,
+  dataLabel = "client data",
 }: {
   hasLocalData: boolean;
   onConfirmSaved: (at: number) => boolean;
   onRemindLater: () => boolean;
+  dataLabel?: "client data" | "training data";
 }) {
   const [dismissError, setDismissError] = useState("");
   if (!isBackupReminderDue(readReminderState(), hasLocalData)) return null;
@@ -137,7 +139,7 @@ export function BackupReminderCard({
     <div className="flex items-start gap-3">
       <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><ShieldCheck size={19}/></span>
       <div className="min-w-0 flex-1">
-        <h2 id="backup-reminder-title" className="display-font text-lg font-semibold">Protect your client data</h2>
+        <h2 id="backup-reminder-title" className="display-font text-lg font-semibold">Protect your {dataLabel}</h2>
         <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Your CoachAura data is stored on this device. Create a backup regularly to protect against data loss if your phone is lost, damaged or replaced.</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <BackupExportAction buttonLabel="Back Up Now" testId="button-backup-now" onConfirmSaved={onConfirmSaved}/>

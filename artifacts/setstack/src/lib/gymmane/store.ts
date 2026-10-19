@@ -5,7 +5,20 @@ import { encodeBackup, inspectBackup, validateSavedFloor, type BackupResult } fr
 import { installProgram } from "./apply.ts";
 import { kExercises, type CatalogExercise } from "./catalog.ts";
 import { guessMuscle } from "./match.ts";
-import type { Client, Draft, DraftEntry, ExerciseLog, Routine, SessionLog, SetLog } from "./models.ts";
+import {
+  INDIVIDUAL_PROFILE_ID,
+  individualWorkoutOwner,
+  type Client,
+  type Draft,
+  type DraftEntry,
+  type ExerciseLog,
+  type IndividualProfile,
+  type Routine,
+  type SessionLog,
+  type SetLog,
+  type TrainingMode,
+  type WorkoutOwner,
+} from "./models.ts";
 import { validLoggedSet, validSessionEdit } from "./workout-logging.ts";
 import { kProgramTemplates } from "./programs.ts";
 import { seedClients } from "./seed.ts";
@@ -17,6 +30,8 @@ import { DEFAULT_APPEARANCE, type AppearanceTheme } from "./appearance.ts";
 
 type FloorState = {
   clients: Client[];
+  trainingMode: TrainingMode;
+  individualProfile: IndividualProfile;
   unit: Unit;
   appearance: AppearanceTheme;
   draft: Draft | null;
@@ -25,6 +40,7 @@ type FloorState = {
   notice: string | null;
   setUnit: (unit: Unit) => void;
   setAppearance: (appearance: AppearanceTheme) => void;
+  setTrainingMode: (mode: TrainingMode) => void;
   setNotice: (notice: string | null) => void;
   addClient: (client: Client) => boolean;
   updateClient: (id: string, patch: Partial<Client>) => void;
@@ -84,11 +100,18 @@ function patchClient(clients: Client[], id: string, update: (client: Client) => 
   return clients.map((client) => (client.id === id ? update(client) : client));
 }
 
+function workoutOwner(state: Pick<FloorState, "clients" | "individualProfile">, id: string): WorkoutOwner | undefined {
+  if (id === INDIVIDUAL_PROFILE_ID) return individualWorkoutOwner(state.individualProfile);
+  return state.clients.find((client) => client.id === id);
+}
+
 export const useFloor = create<FloorState>()(
   durablePersist(
     (set, get) => ({
       // Demo data remains opt-in in Settings. Never substitute it for a failed read.
       clients: typeof window === "undefined" ? seedClients() : [],
+      trainingMode: "trainer",
+      individualProfile: { restSeconds: 90, sessions: [] },
       unit: "kg",
       appearance: DEFAULT_APPEARANCE,
       draft: null,
@@ -97,9 +120,11 @@ export const useFloor = create<FloorState>()(
       notice: null,
       setUnit: (unit) => set({ unit }),
       setAppearance: (appearance) => set({ appearance }),
+      setTrainingMode: (trainingMode) => set({ trainingMode }),
       setNotice: (notice) => set({ notice }),
       addClient: (client) => {
         const clients = get().clients;
+        if (client.id === INDIVIDUAL_PROFILE_ID) return false;
         if (!canCreateClient(clients.length, hasBillingLifetimeAccess())) return false;
         set({ clients: [client, ...clients] });
         return true;
@@ -111,13 +136,15 @@ export const useFloor = create<FloorState>()(
           clients: get().clients.filter((client) => client.id !== id),
           draft: get().draft?.clientId === id ? null : get().draft,
         }),
-      setRest: (id, seconds) =>
-        set({
-          clients: patchClient(get().clients, id, (client) => ({
-            ...client,
-            restSeconds: seconds <= 0 ? 0 : Math.min(600, Math.max(15, seconds)),
-          })),
-        }),
+      setRest: (id, seconds) => {
+        const state = get();
+        const restSeconds = seconds <= 0 ? 0 : Math.min(600, Math.max(15, seconds));
+        if (id === INDIVIDUAL_PROFILE_ID) {
+          set({ individualProfile: { ...state.individualProfile, restSeconds } });
+        } else {
+          set({ clients: patchClient(state.clients, id, (client) => ({ ...client, restSeconds })) });
+        }
+      },
       addBodyweight: (id, kg) =>
         set({
           clients: patchClient(get().clients, id, (client) => ({
@@ -218,9 +245,9 @@ export const useFloor = create<FloorState>()(
           if (typeof window !== "undefined") window.dispatchEvent(new Event("setstack:resume-workout"));
           return;
         }
-        const client = get().clients.find((item) => item.id === clientId);
-        if (!client) return;
-        const routine = routineId ? client.routines.find((item) => item.id === routineId) : null;
+        const owner = workoutOwner(get(), clientId);
+        if (!owner) return;
+        const routine = routineId ? owner.routines.find((item) => item.id === routineId) : null;
         const pool = [...kExercises, ...get().custom];
         const exercises: ExerciseLog[] = (routine?.exerciseIds ?? []).map((id) => {
           const info = pool.find((exercise) => exercise.id === id);
@@ -243,7 +270,7 @@ export const useFloor = create<FloorState>()(
             exercises,
             entries: {},
             restPausedSeconds: null,
-            restDurationSeconds: routine?.rest[exercises[0]?.id ?? ""] ?? client.restSeconds,
+            restDurationSeconds: routine?.rest[exercises[0]?.id ?? ""] ?? owner.restSeconds,
           },
         });
       },
@@ -252,9 +279,9 @@ export const useFloor = create<FloorState>()(
         const draft = get().draft;
         if (!draft) return;
         const activeIndex = Math.max(0, Math.min(draft.exercises.length - 1, index));
-        const client = get().clients.find((item) => item.id === draft.clientId);
-        const routine = client?.routines.find((item) => item.id === draft.routineId);
-        const duration = draft.restOverrideSeconds ?? routine?.rest[draft.exercises[activeIndex]?.id ?? ""] ?? client?.restSeconds ?? 90;
+        const owner = workoutOwner(get(), draft.clientId);
+        const routine = owner?.routines.find((item) => item.id === draft.routineId);
+        const duration = draft.restOverrideSeconds ?? routine?.rest[draft.exercises[activeIndex]?.id ?? ""] ?? owner?.restSeconds ?? 90;
         set({ draft: { ...draft, activeIndex, restDurationSeconds: duration } });
       },
       addDraftExercise: (exercise) => {
@@ -302,15 +329,15 @@ export const useFloor = create<FloorState>()(
         if (!validLoggedSet(entry)) return;
         const draft = get().draft;
         if (!draft || draft.exercises.length === 0) return;
-        const client = get().clients.find((item) => item.id === draft.clientId);
-        const routine = client?.routines.find((item) => item.id === draft.routineId);
+        const owner = workoutOwner(get(), draft.clientId);
+        const routine = owner?.routines.find((item) => item.id === draft.routineId);
         const exercises = draft.exercises.map((exercise, index) =>
           index === draft.activeIndex
             ? { ...exercise, sets: [...exercise.sets, { ...entry, id: uid() }] }
             : exercise,
         );
         const active = exercises[draft.activeIndex];
-        const rest = active ? (draft.restOverrideSeconds ?? routine?.rest[active.id] ?? client?.restSeconds ?? 90) : 0;
+        const rest = active ? (draft.restOverrideSeconds ?? routine?.rest[active.id] ?? owner?.restSeconds ?? 90) : 0;
         set({
           draft: {
             ...draft,
@@ -371,8 +398,8 @@ export const useFloor = create<FloorState>()(
       startRest: () => {
         const draft = get().draft;
         if (!draft) return;
-        const client = get().clients.find((item) => item.id === draft.clientId);
-        const seconds = draft.restPausedSeconds ?? draft.restDurationSeconds ?? client?.restSeconds ?? 90;
+        const owner = workoutOwner(get(), draft.clientId);
+        const seconds = draft.restPausedSeconds ?? draft.restDurationSeconds ?? owner?.restSeconds ?? 90;
         set({ draft: { ...draft, restUntil: seconds > 0 ? Date.now() + seconds * 1000 : null, restPausedSeconds: null } });
       },
       pauseRest: () => {
@@ -403,30 +430,47 @@ export const useFloor = create<FloorState>()(
           routineId: draft.routineId,
           exercises,
         };
-        set({
-          draft: null,
-          clients: patchClient(get().clients, draft.clientId, (client) => ({
-            ...client,
-            sessions: [...client.sessions, session],
-          })),
-        });
+        const state = get();
+        if (draft.clientId === INDIVIDUAL_PROFILE_ID) {
+          set({ draft: null, individualProfile: { ...state.individualProfile, sessions: [...state.individualProfile.sessions, session] } });
+        } else {
+          set({
+            draft: null,
+            clients: patchClient(state.clients, draft.clientId, (client) => ({
+              ...client,
+              sessions: [...client.sessions, session],
+            })),
+          });
+        }
         return draft.clientId;
       },
-      deleteSession: (clientId, sessionId) =>
-        set({
-          clients: patchClient(get().clients, clientId, (client) => ({
+      deleteSession: (clientId, sessionId) => {
+        const state = get();
+        if (clientId === INDIVIDUAL_PROFILE_ID) {
+          set({ individualProfile: { ...state.individualProfile, sessions: state.individualProfile.sessions.filter((session) => session.id !== sessionId) } });
+        } else {
+          set({ clients: patchClient(state.clients, clientId, (client) => ({
             ...client,
             sessions: client.sessions.filter((session) => session.id !== sessionId),
-          })),
-        }),
+          })) });
+        }
+      },
       updateSession: (clientId, session) => {
-        const client = get().clients.find((item) => item.id === clientId);
-        const previous = client?.sessions.find((item) => item.id === session.id);
+        const state = get();
+        const owner = workoutOwner(state, clientId);
+        const previous = owner?.sessions.find((item) => item.id === session.id);
         if (!previous || !validSessionEdit(session, previous)) return false;
         try {
-          set({ clients: patchClient(get().clients, clientId, (item) => ({
-            ...item, sessions: item.sessions.map((saved) => saved.id === session.id ? structuredClone(session) : saved),
-          })) });
+          if (clientId === INDIVIDUAL_PROFILE_ID) {
+            set({ individualProfile: {
+              ...state.individualProfile,
+              sessions: state.individualProfile.sessions.map((saved) => saved.id === session.id ? structuredClone(session) : saved),
+            } });
+          } else {
+            set({ clients: patchClient(state.clients, clientId, (item) => ({
+              ...item, sessions: item.sessions.map((saved) => saved.id === session.id ? structuredClone(session) : saved),
+            })) });
+          }
         } catch (error) {
           if (error instanceof PersistenceFailure) return false;
           throw error;
@@ -434,8 +478,8 @@ export const useFloor = create<FloorState>()(
         return true;
       },
       exportBackup: () => {
-        const { clients, custom, templates, draft, unit, appearance } = get();
-        return encodeBackup({ clients, custom, templates, draft, unit, appearance });
+        const { clients, custom, templates, draft, unit, appearance, trainingMode, individualProfile } = get();
+        return encodeBackup({ clients, custom, templates, draft, unit, appearance, trainingMode, individualProfile });
       },
       previewBackup: (raw) => inspectBackup(raw, get()),
       importBackup: (raw) => {
@@ -460,7 +504,9 @@ export const useFloor = create<FloorState>()(
           }
           withRecoveryWrite(() => set({
             ...result.preview.data,
-            notice: `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"}.`,
+            notice: result.preview.preservesCurrentIndividualData
+              ? `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"}; kept ${result.preview.data.individualProfile!.sessions.length} existing personal workout${result.preview.data.individualProfile!.sessions.length === 1 ? "" : "s"} and training mode.`
+              : `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"} and ${result.preview.data.individualProfile!.sessions.length} personal workout${result.preview.data.individualProfile!.sessions.length === 1 ? "" : "s"}.`,
           }));
           return "";
         } catch (error) {
@@ -475,6 +521,8 @@ export const useFloor = create<FloorState>()(
       storage: createJSONStorage(() => (typeof window === "undefined" ? memoryStorage() : localStorage)),
       partialize: (state) => ({
         clients: state.clients,
+        trainingMode: state.trainingMode,
+        individualProfile: state.individualProfile,
         unit: state.unit,
         appearance: state.appearance,
         draft: state.draft,

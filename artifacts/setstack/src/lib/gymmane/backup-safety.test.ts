@@ -9,7 +9,11 @@ import { seedClients } from "./seed.ts";
 import { DEFAULT_APPEARANCE } from "./appearance.ts";
 
 function fixture(): SavedFloor {
-  return { clients: seedClients().map((c, i) => ({ ...c, name: `TEST Client ${i}` })), custom: [], templates: [], draft: null, unit: "kg", appearance: DEFAULT_APPEARANCE };
+  return {
+    clients: seedClients().map((c, i) => ({ ...c, name: `TEST Client ${i}` })),
+    custom: [], templates: [], draft: null, unit: "kg", appearance: DEFAULT_APPEARANCE,
+    trainingMode: "trainer", individualProfile: { restSeconds: 90, sessions: [] },
+  };
 }
 function reject(data: unknown, pattern: RegExp) {
   const result = inspectBackup(JSON.stringify(data), fixture());
@@ -19,11 +23,16 @@ function reject(data: unknown, pattern: RegExp) {
 test("TEST full nested validation rejects malformed and incompatible backups without filtering", () => {
   reject({ clients: [{ id: "test", name: "TEST", sex: "female", routines: [], sessions: [] }] }, /Unsupported/);
   reject({ app: "OtherApp", version: 2, ...fixture() }, /Unsupported/);
-  reject({ app: "SetStack", version: 3, ...fixture() }, /Unsupported/);
+  reject({ app: "SetStack", version: 4, ...fixture() }, /Unsupported/);
   reject({ app: "SetStack", version: 2, ...fixture(), custom: null }, /list/);
   reject({ app: "SetStack", version: 1, clients: fixture().clients, templates: null }, /list/);
   for (const field of ["clients", "custom", "templates", "unit", "draft"]) {
     const data: Record<string, unknown> = { app: "SetStack", version: 2, ...fixture() };
+    delete data[field];
+    reject(data, /missing/);
+  }
+  for (const field of ["trainingMode", "individualProfile"]) {
+    const data: Record<string, unknown> = { app: "CoachAura", version: 3, ...fixture() };
     delete data[field];
     reject(data, /missing/);
   }
@@ -38,6 +47,7 @@ test("TEST full nested validation rejects malformed and incompatible backups wit
     ["invalid assignment", (d) => { d.clients[0].weeklyPlan["1"] = "does-not-exist"; }],
     ["unknown routine exercise", (d) => { d.clients[0].routines[0].exerciseIds.push("unavailable"); }],
     ["unsafe identifier", (d) => { d.clients[0].id = "__proto__"; }],
+    ["reserved personal owner identifier", (d) => { d.clients[0].id = "__coachaura_individual__"; }],
     ["negative muscle target", (d) => { d.clients[0].muscleTargets = { chest: -1 }; }],
     ["excessive muscle target", (d) => { d.clients[0].muscleTargets = { chest: 101 }; }],
     ["unknown muscle target", (d) => { d.clients[0].muscleTargets = { imaginary: 4 } as never; }],
@@ -46,13 +56,28 @@ test("TEST full nested validation rejects malformed and incompatible backups wit
   for (const [name, mutate] of mutations) {
     const data = fixture();
     mutate(data);
-    const result = inspectBackup(encodeBackup(data), fixture());
+    const result = inspectBackup(JSON.stringify({ app: "SetStack", version: 3, ...data }), fixture());
     assert.equal(result.ok, false, name);
   }
 });
-test("TEST version 2 roundtrip preserves exact loads, pending draft and units", () => {
+test("TEST version 3 roundtrip preserves personal mode, sessions, exact loads and pending draft", () => {
   const source = fixture();
   source.clients[0].muscleTargets = { chest: 10.5, calves: 4 };
+  source.trainingMode = "individual";
+  source.individualProfile = {
+    restSeconds: 75,
+    sessions: [{
+      id: "personal-test-session",
+      date: "2025-03-20",
+      durationSec: 1800,
+      name: "TEST personal session",
+      routineId: null,
+      exercises: [{
+        id: "test-personal-exercise", name: "TEST press", primary: "chest", equipment: "Barbell",
+        sets: [{ id: "test-personal-set", weight: 60.625, reps: 8, kind: "normal", rpe: 8 }],
+      }],
+    }],
+  };
   useFloor.setState(source);
   const client = useFloor.getState().clients[0];
   useFloor.getState().startSession(client.id, client.routines[0].id);
@@ -67,6 +92,8 @@ test("TEST version 2 roundtrip preserves exact loads, pending draft and units", 
     assert.equal(result.preview.hasDraft, true);
     assert.equal(result.preview.data.draft!.entries![exerciseId].weightKg, 60.625);
     assert.equal(result.preview.data.unit, "lb");
+    assert.equal(result.preview.data.trainingMode, "individual");
+    assert.deepEqual(result.preview.data.individualProfile, source.individualProfile);
     assert.deepEqual(result.preview.data.clients[0].muscleTargets, { chest: 10.5, calves: 4 });
   }
   useFloor.setState(fixture());
@@ -105,6 +132,27 @@ test("TEST legacy upgrades add only documented optional fields and preserve curr
     assert.deepEqual(result.preview.data.clients[0].routines[0].plan, {});
   }
   assert.ok(inspectBackup(JSON.stringify(old), current).ok);
+});
+test("TEST version 2 restore preserves current personal history and training mode", () => {
+  const current = fixture();
+  current.trainingMode = "individual";
+  current.individualProfile = {
+    restSeconds: 80,
+    sessions: [{
+      id: "personal-preserved", date: "2025-03-20", durationSec: 1200, name: "TEST preserved",
+      routineId: null, exercises: [],
+    }],
+  };
+  const oldVersion2 = { app: "SetStack", version: 2, ...fixture() };
+  delete (oldVersion2 as Partial<typeof oldVersion2>).trainingMode;
+  delete (oldVersion2 as Partial<typeof oldVersion2>).individualProfile;
+  const result = inspectBackup(JSON.stringify(oldVersion2), current);
+  assert.ok(result.ok);
+  if (result.ok) {
+    assert.equal(result.preview.preservesCurrentIndividualData, true);
+    assert.equal(result.preview.data.trainingMode, "individual");
+    assert.deepEqual(result.preview.data.individualProfile, current.individualProfile);
+  }
 });
 test("TEST incomplete or out-of-range pending input survives backup without becoming a logged set", () => {
   useFloor.setState(fixture());

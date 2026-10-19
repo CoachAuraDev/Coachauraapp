@@ -12,7 +12,7 @@ import {
   type MuscleGroup,
   type RecoveryStatus,
 } from "@/lib/gymmane/muscle-activity";
-import type { Client } from "@/lib/gymmane/models";
+import type { WorkoutOwner } from "@/lib/gymmane/models";
 
 const panel = "rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] p-4 sm:p-5";
 const statusTone: Record<RecoveryStatus, string> = {
@@ -24,7 +24,15 @@ const statusTone: Record<RecoveryStatus, string> = {
 };
 const intensityLabel = { none: "No recorded work", low: "Low", moderate: "Moderate", high: "High", "very-high": "Very high" };
 
-export function MuscleActivityDashboard({ client }: { client: Client }) {
+export function MuscleActivityDashboard({
+  client,
+  individual = false,
+  onStartWorkout,
+}: {
+  client: WorkoutOwner;
+  individual?: boolean;
+  onStartWorkout?: () => void;
+}) {
   const clients = useFloor((state) => state.clients);
   const custom = useFloor((state) => state.custom);
   const startSession = useFloor((state) => state.startSession);
@@ -55,21 +63,21 @@ export function MuscleActivityDashboard({ client }: { client: Client }) {
   }
   function choosePeriod(days: ActivityPeriod) {
     setPeriod(days);
-    setLocation(`/clients/${client.id}?tab=muscles&period=${days}`);
+    if (!individual) setLocation(`/clients/${client.id}?tab=muscles&period=${days}`);
   }
 
   return <section className="space-y-5" data-testid="dashboard-muscle-activity">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
-        <p className="mono text-[10px] uppercase tracking-[.17em] text-[hsl(var(--muted-foreground))]">Completed workout analytics</p>
+        <p className="mono text-[10px] uppercase tracking-[.17em] text-[hsl(var(--muted-foreground))]">{individual ? "Your completed workouts" : "Completed workout analytics"}</p>
         <h2 className="display-font mt-1 text-2xl font-semibold tracking-tight">Muscle activity & recovery</h2>
         <p className="mt-1 max-w-2xl text-sm text-[hsl(var(--muted-foreground))]">A clear view of training exposure—not a measure of biological recovery.</p>
       </div>
-      <label className="min-w-0 text-xs font-semibold sm:w-56">Displaying client
+      {!individual && <label className="min-w-0 text-xs font-semibold sm:w-56">Displaying client
         <select value={client.id} onChange={(event) => setLocation(`/clients/${event.target.value}?tab=muscles&period=${period}`)} className="mt-1.5 min-h-11 w-full rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--card))] px-3 text-sm text-[hsl(var(--foreground))]" data-testid="select-muscle-client">
           {clients.map((item) => <option key={item.id} value={item.id}>{item.name}{item.id.startsWith("seed-") ? " (Demo)" : ""}</option>)}
         </select>
-      </label>
+      </label>}
     </div>
 
     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -88,7 +96,7 @@ export function MuscleActivityDashboard({ client }: { client: Client }) {
     {result.workingSets === 0 && <div className={`${panel} border-dashed`} data-testid="empty-muscle-history">
       <h3 className="font-semibold">Progress starts here</h3>
       <p className="mt-1 text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">Complete a workout for {client.name} to build this view. Unfinished and warm-up-only sessions are not included.</p>
-      <button type="button" onClick={() => startSession(client.id, client.routines[0]?.id ?? null)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[hsl(var(--primary))] px-4 text-sm font-semibold text-[hsl(var(--primary-foreground))]" data-testid="button-muscle-start-session"><Zap size={16}/>Start workout</button>
+      <button type="button" onClick={() => individual ? onStartWorkout?.() : startSession(client.id, client.routines[0]?.id ?? null)} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-xl bg-[hsl(var(--primary))] px-4 text-sm font-semibold text-[hsl(var(--primary-foreground))]" data-testid="button-muscle-start-session"><Zap size={16}/>Start workout</button>
     </div>}
     {result.unmappedExercises.length > 0 && <div className="rounded-xl border border-[hsl(38_90%_55%/.35)] bg-[hsl(38_90%_55%/.1)] p-4 text-sm text-[hsl(38_95%_80%)]" data-testid="warning-unmapped-exercises">
       <p className="font-semibold">Some working sets have no muscle mapping</p>

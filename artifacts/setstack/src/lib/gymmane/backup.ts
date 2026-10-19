@@ -1,7 +1,14 @@
 import type { CatalogExercise } from "./catalog.ts";
 import { kExercises } from "./catalog.ts";
 import { fromDisplay, SET_KINDS, type Unit } from "./engine.ts";
-import type { Client, Draft, Routine } from "./models.ts";
+import {
+  INDIVIDUAL_PROFILE_ID,
+  type Client,
+  type Draft,
+  type IndividualProfile,
+  type Routine,
+  type TrainingMode,
+} from "./models.ts";
 import type { MuscleTargetGroup } from "./models.ts";
 import { MUSCLE_TARGET_GROUPS } from "./client-overview.ts";
 import { normalizeSavedAppearance, type AppearanceTheme } from "./appearance.ts";
@@ -15,6 +22,9 @@ export type SavedFloor = {
   draft: Draft | null;
   unit: Unit;
   appearance: AppearanceTheme;
+  /** Optional in the TypeScript input shape so pre-Individual Mode callers stay compatible. */
+  trainingMode?: TrainingMode;
+  individualProfile?: IndividualProfile;
 };
 export type BackupPreview = {
   data: SavedFloor;
@@ -24,6 +34,7 @@ export type BackupPreview = {
   custom: number;
   hasDraft: boolean;
   legacy: boolean;
+  preservesCurrentIndividualData: boolean;
 };
 export type BackupResult = { ok: true; preview: BackupPreview } | { ok: false; error: string };
 
@@ -134,8 +145,30 @@ export function validateSavedFloor(value: unknown): SavedFloor {
   const knownExercises = new Set([...catalogIds, ...custom.map((e) => e.id)]);
   const knownMuscleTargetGroups = new Set(MUSCLE_TARGET_GROUPS.map((group) => group.id));
   const templates = routines(floor.templates === undefined ? [] : floor.templates, "templates");
+  const trainingMode = floor.trainingMode === undefined ? "trainer" : floor.trainingMode;
+  if (trainingMode !== "trainer" && trainingMode !== "individual") {
+    throw new Error("workspace.trainingMode: unsupported mode.");
+  }
+  const savedIndividual = floor.individualProfile === undefined
+    ? { restSeconds: 90, sessions: [] }
+    : record(floor.individualProfile, "individualProfile");
+  number(savedIndividual.restSeconds, "individualProfile.restSeconds");
+  const individualSessions = objects(savedIndividual.sessions, "individualProfile.sessions").map((session, index) => {
+    const path = `individualProfile.sessions[${index}]`;
+    date(session.date, `${path}.date`);
+    text(session.name, `${path}.name`);
+    number(session.durationSec, `${path}.durationSec`);
+    if (session.routineId !== null) id(session.routineId, `${path}.routineId`);
+    exercises(session.exercises, `${path}.exercises`);
+    return session;
+  });
+  const individualProfile: IndividualProfile = {
+    restSeconds: savedIndividual.restSeconds as number,
+    sessions: individualSessions as unknown as IndividualProfile["sessions"],
+  };
   const clients = objects(floor.clients, "clients").map((c, i) => {
     const p = `clients[${i}]`;
+    if (c.id === INDIVIDUAL_PROFILE_ID) throw new Error(`${p}.id: reserved for personal training.`);
     text(c.name, `${p}.name`);
     if (c.sex !== "male" && c.sex !== "female") throw new Error(`${p}.sex: unsupported value.`);
     number(c.age, `${p}.age`);
@@ -193,8 +226,12 @@ export function validateSavedFloor(value: unknown): SavedFloor {
   if (draft !== null) {
     const d = record(draft, "draft");
     const owner = clients.find((c) => c.id === d.clientId);
-    if (!owner) throw new Error("draft: client does not exist.");
-    if (d.routineId !== null && !owner.routines.some((r) => r.id === d.routineId)) throw new Error("draft: assigned routine does not exist.");
+    const isIndividual = d.clientId === INDIVIDUAL_PROFILE_ID;
+    if (!owner && !isIndividual) throw new Error("draft: client does not exist.");
+    if (isIndividual && d.routineId !== null) throw new Error("draft: personal workouts cannot reference a client routine.");
+    if (owner && d.routineId !== null && !owner.routines.some((r) => r.id === d.routineId)) {
+      throw new Error("draft: assigned routine does not exist.");
+    }
     text(d.name, "draft.name");
     number(d.startedAt, "draft.startedAt");
     nullable(d.restUntil, "draft.restUntil");
@@ -234,12 +271,21 @@ export function validateSavedFloor(value: unknown): SavedFloor {
       if (d[key] !== undefined && typeof d[key] !== "boolean") throw new Error(`draft.${key}: expected boolean.`);
     }
   }
-  return { clients, custom, templates, unit: floor.unit, appearance, draft: draft as Draft | null };
+  return {
+    clients,
+    custom,
+    templates,
+    unit: floor.unit,
+    appearance,
+    draft: draft as Draft | null,
+    trainingMode,
+    individualProfile,
+  };
 }
 
 export function encodeBackup(data: SavedFloor): string {
-  // Keep the historical format identifier; bump the schema, not the storage key.
-  const body = { app: "SetStack", version: 2, ...data };
+  // Keep the historical compatibility marker; bump the schema, not the storage key.
+  const body = { app: "SetStack", version: 3, ...validateSavedFloor(data) };
   let encoded = JSON.stringify(body, null, 2);
   if (new TextEncoder().encode(encoded).length > MAX_BACKUP_BYTES) encoded = JSON.stringify(body);
   if (new TextEncoder().encode(encoded).length > MAX_BACKUP_BYTES) {
@@ -255,30 +301,53 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
     const baseline: SavedFloor = {
       clients: current.clients, custom: current.custom, templates: current.templates,
       draft: current.draft, unit: current.unit, appearance: current.appearance,
+      trainingMode: current.trainingMode ?? "trainer",
+      individualProfile: current.individualProfile ?? { restSeconds: 90, sessions: [] },
     };
     let legacy = true;
+    let preservesCurrentIndividualData = false;
     let candidate: unknown;
     if (Array.isArray(parsed)) {
+      preservesCurrentIndividualData = true;
       candidate = { ...baseline, clients: parsed, draft: null };
     } else {
       const body = record(parsed, "backup");
-      if (!["SetStack", "CoachAura"].includes(body.app as string) || ![1, 2].includes(body.version as number)) {
-        throw new Error("Unsupported backup application or version. Use a SetStack/CoachAura version 1 or 2 backup.");
+      if (!["SetStack", "CoachAura"].includes(body.app as string) || ![1, 2, 3].includes(body.version as number)) {
+        throw new Error("Unsupported backup application or version. Use a SetStack/CoachAura version 1, 2 or 3 backup.");
       }
       legacy = body.version === 1;
-      if (!legacy) {
+      if (body.version === 2) {
         for (const key of ["clients", "custom", "templates", "unit", "draft"]) {
           if (!(key in body)) throw new Error(`Version 2 backup is missing ${key}.`);
         }
       }
+      if (body.version === 3) {
+        legacy = false;
+        for (const key of ["clients", "custom", "templates", "unit", "draft", "trainingMode", "individualProfile"]) {
+          if (!(key in body)) throw new Error(`Version 3 backup is missing ${key}.`);
+        }
+      }
+      preservesCurrentIndividualData = body.version !== 3;
       candidate = legacy
         ? { ...baseline, clients: body.clients, custom: "custom" in body ? body.custom : current.custom, templates: "templates" in body ? body.templates : current.templates, draft: null }
-        : { ...baseline, ...body };
+        : body.version === 2
+          ? {
+            ...baseline,
+            clients: body.clients,
+            custom: body.custom,
+            templates: body.templates,
+            draft: body.draft,
+            unit: body.unit,
+            appearance: body.appearance ?? baseline.appearance,
+          }
+          : { ...baseline, ...body };
     }
     const data = validateSavedFloor(candidate);
     return { ok: true, preview: {
       data, legacy, clients: data.clients.length, custom: data.custom.length, templates: data.templates.length,
-      sessions: data.clients.reduce((n, c) => n + c.sessions.length, 0), hasDraft: data.draft !== null,
+      sessions: data.clients.reduce((n, c) => n + c.sessions.length, 0) + data.individualProfile!.sessions.length,
+      hasDraft: data.draft !== null,
+      preservesCurrentIndividualData,
     } };
   } catch (error) {
     return { ok: false, error: error instanceof SyntaxError ? "That file is not valid JSON." : error instanceof Error ? error.message : "Invalid backup." };

@@ -128,7 +128,7 @@ export function muscleSplit(client: Client, today = todayIso(), days = 30) {
     .sort((a, b) => b.volume - a.volume);
 }
 
-export function personalRecords(client: Client) {
+export function personalRecords(client: Pick<Client, "sessions">) {
   const best = new Map<string, { name: string; e1rm: number; weight: number; reps: number; date: string; rpe: number | null }>();
   for (const session of client.sessions) {
     for (const exercise of session.exercises) {
