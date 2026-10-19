@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage } from "zustand/middleware";
-import { durablePersist, withRecoveryWrite } from "./durable-persistence.ts";
+import { durablePersist, PersistenceFailure, withRecoveryWrite } from "./durable-persistence.ts";
 import { encodeBackup, inspectBackup, validateSavedFloor, type BackupResult } from "./backup.ts";
 import { installProgram } from "./apply.ts";
 import { kExercises, type CatalogExercise } from "./catalog.ts";
@@ -423,9 +423,14 @@ export const useFloor = create<FloorState>()(
         const client = get().clients.find((item) => item.id === clientId);
         const previous = client?.sessions.find((item) => item.id === session.id);
         if (!previous || !validSessionEdit(session, previous)) return false;
-        set({ clients: patchClient(get().clients, clientId, (item) => ({
-          ...item, sessions: item.sessions.map((saved) => saved.id === session.id ? structuredClone(session) : saved),
-        })) });
+        try {
+          set({ clients: patchClient(get().clients, clientId, (item) => ({
+            ...item, sessions: item.sessions.map((saved) => saved.id === session.id ? structuredClone(session) : saved),
+          })) });
+        } catch (error) {
+          if (error instanceof PersistenceFailure) return false;
+          throw error;
+        }
         return true;
       },
       exportBackup: () => {

@@ -573,7 +573,7 @@ async function rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl)
     "The valid date and unchanged workout data should persist after reload");
 }
 
-async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients) {
+async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients, debugPort) {
   const fixture = structuredClone(sourceClients.find((client) => client.id === "seed-amina"));
   assert.ok(fixture, "The saved-set fixture should have a source client");
   fixture.id = "test-added-saved-set";
@@ -610,6 +610,10 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients) {
     chest: await muscleChartSnapshot(page, baseUrl, ownerId, "chest"),
     triceps: await muscleChartSnapshot(page, baseUrl, ownerId, "triceps"),
   });
+  const chartSnapshotForPage = async (targetPage, ownerId) => ({
+    chest: await muscleChartSnapshot(targetPage, baseUrl, ownerId, "chest"),
+    triceps: await muscleChartSnapshot(targetPage, baseUrl, ownerId, "triceps"),
+  });
   const before = await clientSnapshot(fixture.id);
   const otherBefore = await clientSnapshot("seed-leo");
   const expectedWeightKg = 42.5;
@@ -632,6 +636,66 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients) {
   await page.fill(`input-editor-weight-${newSetId}`, displayWeight);
   await page.fill(`input-editor-reps-${newSetId}`, String(expectedReps));
   await page.fill(`input-editor-rir-${newSetId}`, String(expectedRir));
+  const beforeFailedSaveRaw = await page.evaluate('localStorage.getItem("setstack-v1")');
+  await page.evaluate(`(() => {
+    window.__coachauraFailNextSetstackWrite = true;
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === "setstack-v1" && window.__coachauraFailNextSetstackWrite) {
+        window.__coachauraFailNextSetstackWrite = false;
+        throw new DOMException("Simulated storage write failure", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  })()`);
+  await page.click("button-editor-save");
+  await waitFor("failed saved-workout write warning", () => page.evaluate(
+    'document.querySelector(\'[data-testid="button-retry-storage"]\') !== null',
+  ));
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ), true, "The saved-workout editor must remain open after a failed storage write");
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="input-editor-weight-${newSetId}"]')?.value`,
+  ), displayWeight, "The newly entered load must remain in the editor after the failed write");
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="input-editor-reps-${newSetId}"]')?.value`,
+  ), String(expectedReps), "The newly entered reps must remain in the editor after the failed write");
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="input-editor-rir-${newSetId}"]')?.value`,
+  ), String(expectedRir), "The newly entered effort must remain in the editor after the failed write");
+  assert.equal(await page.evaluate(
+    'localStorage.getItem("setstack-v1")',
+  ), beforeFailedSaveRaw, "The failed write must leave the saved workout byte-for-byte unchanged");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')?.textContent',
+  ), "Could not save this workout.", "The editor must report that the save did not complete");
+
+  const chartPage = await openPage(debugPort);
+  try {
+    // A second tab hydrates the last committed storage while the original tab
+    // keeps the failed edit and entered values mounted for an in-place retry.
+    assert.deepEqual(
+      await chartSnapshotForPage(chartPage, fixture.id),
+      before,
+      "A failed save must leave the client's visible muscle charts unchanged",
+    );
+    assert.deepEqual(
+      await chartSnapshotForPage(chartPage, "seed-leo"),
+      otherBefore,
+      "A failed save must leave other clients' muscle charts unchanged",
+    );
+  } finally {
+    await chartPage.close();
+  }
+
+  await page.click("button-retry-storage");
+  await waitFor("storage retry to clear the failure warning", () => page.evaluate(
+    'document.querySelector(\'[data-testid="button-retry-storage"]\') === null',
+  ));
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="input-editor-weight-${newSetId}"]')?.value`,
+  ), displayWeight, "Checking storage again must preserve the added set's load for retry");
   await page.click("button-editor-save");
   await waitFor("new saved-workout set persisted", async () => {
     const client = (await storedState(page)).clients.find((item) => item.id === fixture.id);
@@ -1885,7 +1949,7 @@ async function changeThemeAndReload(page, baseUrl, nextAppearance, savedClients)
   ), "The logged set should still be visible after the reload");
 }
 
-test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 180000 }, async (t) => {
+test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 360000 }, async (t) => {
   const chrome = browserBinary();
   try {
     await access(chrome);
@@ -2032,8 +2096,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Impossible saved-workout dates are rejected without changing history, while valid dates still save");
   await rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Saving a workout with every set removed is rejected; cancelling preserves history and charts");
-  await addSavedSetAndVerifyCharts(page, baseUrl, initialClients);
-  t.diagnostic("Adding a saved set updates only the intended client's direct and indirect muscle totals");
+  await addSavedSetAndVerifyCharts(page, baseUrl, initialClients, debugPort);
+  t.diagnostic("Failed added-set saves preserve editor values and charts; retry and reload persist the set");
   await rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Negative and non-finite saved-load corrections are rejected without changing storage or muscle charts");
   await rejectInvalidSavedRepsAndVerifyUnchanged(page, baseUrl);
