@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
 import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
+import { INDIVIDUAL_PROFILE_ID } from "../src/lib/gymmane/models.ts";
 import { analyzeMuscleActivity, effortFactorFromRpe, mapExerciseMuscles, MUSCLE_GROUPS } from "../src/lib/gymmane/muscle-activity.ts";
 import { kExercises } from "../src/lib/gymmane/catalog.ts";
 
@@ -2683,4 +2684,40 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   })`);
   assert.match(emptyAchievement.count ?? "", /^\d+ \/ 15 earned$/, "Empty workout history should still render the gallery without an error");
   assert.match(emptyAchievement.firstWorkout ?? "", /locked/, "A client with no saved workouts must not receive a workout achievement");
+
+  const clientsBeforeIndividual = (await storedState(page)).clients;
+  await navigate(page, `${baseUrl}/settings`, "button-training-mode-individual");
+  await page.click("button-training-mode-individual");
+  await navigate(page, `${baseUrl}/`, "individual-bottom-navigation");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="tab-individual-progress"]\')?.getAttribute("aria-pressed")',
+  ), "true", "Progress should be the default Individual Mode tab");
+  await page.click("button-individual-range-7");
+  await page.click("tab-individual-exercises");
+  assert.ok(await page.evaluate(
+    'document.querySelector(\'[data-testid="individual-exercises-screen"] input[data-testid="input-search-library"]\') !== null',
+  ), "Exercises should show the existing searchable exercise library");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="tab-individual-exercises"]\')?.getAttribute("aria-pressed")',
+  ), "true", "The selected Exercises tab should be announced and highlighted");
+  await page.click("tab-individual-profile");
+  assert.ok(await page.evaluate(
+    'document.querySelector(\'[data-testid="individual-profile-preferences"]\') !== null',
+  ), "Profile should show personal training preferences");
+  await page.click("tab-individual-progress");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="button-individual-range-7"]\')?.getAttribute("aria-pressed")',
+  ), "true", "Progress state should remain when switching between tabs");
+  const stateBeforePersonalWorkout = await storedState(page);
+  await page.click("tab-individual-exercises");
+  const exerciseId = kExercises[0].id;
+  await page.click(`button-select-library-exercise-${exerciseId}`);
+  await waitFor("personal workout logger", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="panel-workout-logger"]\')',
+  ));
+  const personalDraftState = await storedState(page);
+  assert.equal(personalDraftState.draft?.clientId, INDIVIDUAL_PROFILE_ID, "Selecting an exercise should create a separate personal draft");
+  assert.equal(personalDraftState.draft?.exercises?.[0]?.id, exerciseId, "The selected library exercise should be added to the personal draft");
+  assert.deepEqual(personalDraftState.clients, stateBeforePersonalWorkout.clients, "Personal workout logging must not modify trainer client records");
+  assert.deepEqual(personalDraftState.clients, clientsBeforeIndividual, "Switching tabs and adding a personal exercise must preserve all client records");
 });

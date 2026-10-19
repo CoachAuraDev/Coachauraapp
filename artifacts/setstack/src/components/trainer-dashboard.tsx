@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Library, Play, Plus, Search, Users, X, Zap, ChevronDown, History } from "lucide-react";
-import { useFloor } from "@/lib/gymmane/store";
+import { useFloor, exercisePool } from "@/lib/gymmane/store";
 import { kExercises, type CatalogExercise } from "@/lib/gymmane/catalog";
 import { INDIVIDUAL_PROFILE_ID } from "@/lib/gymmane/models";
 import { clientSummary } from "@/lib/gymmane/metrics";
@@ -192,12 +192,11 @@ export function ExerciseLibrary({
   onSelect?: (exercise: CatalogExercise) => void;
 }) {
   const [q, setQ] = useState("");
-  const custom = useFloor((state) => state.custom);
-  const pool = useMemo(() => [...kExercises, ...custom], [custom]);
+  const pool = useMemo(() => exercisePool(), []);
   const matches = pool.filter((e) => e.name.toLowerCase().includes(q.toLowerCase()));
   const found = matches.slice(0, 60);
   const list = <>
-    <div className="relative mb-3"><Search size={15} className={`absolute left-3 top-3 ${muted}`} /><input autoFocus={inline} className={`${field} pl-9`} placeholder={`Search ${pool.length} exercises`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search exercises" data-testid="input-search-library" /></div>
+    <div className="relative mb-3"><Search size={15} className={`absolute left-3 top-3 ${muted}`} /><input autoFocus={!inline} className={`${field} pl-9`} placeholder={`Search ${pool.length} exercises`} value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search exercises" data-testid="input-search-library" /></div>
     <p className={`mb-2 text-[11px] ${muted}`}>Bright areas: primary targets. Softer areas: secondary targets. Illustrations, not measured activation.</p>
     <div className="divide-y divide-[hsl(var(--border))]">{found.map((e) => {
       const details = <><ExerciseMuscleIllustration exercise={e} /><span className="min-w-0 flex-1 text-left"><span className="block text-sm font-medium">{e.name}</span><span className={`mono mt-1 block text-[10px] ${muted}`}>{MUSCLE_LABEL[e.primary] ?? e.primary} · {e.equipment}</span></span></>;

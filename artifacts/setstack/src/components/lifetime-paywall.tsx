@@ -26,21 +26,21 @@ export function LifetimePaywall({ onClose }: { onClose: () => void }) {
       ? "border-amber-500/30 bg-amber-500/10 text-amber-200"
       : "border-[hsl(var(--border))] bg-[hsl(var(--background))] text-[hsl(var(--muted-foreground))]";
 
-  return <Modal title="CoachAura Lifetime" onClose={onClose}>
+  return <Modal title="CoachAura Premium" onClose={onClose}>
     <div className="mb-5 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4">
       <div className="flex items-start gap-3">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]">
           <Crown size={20}/>
         </div>
         <div>
-          <p className="text-sm font-semibold">Keep your whole coaching roster together</p>
+          <p className="text-sm font-semibold">More room to coach and progress</p>
           <p className="mt-1 text-xs leading-relaxed text-[hsl(var(--muted-foreground))]">
-            Free includes up to {FREE_CLIENT_LIMIT} clients. Lifetime unlock removes that limit with one payment—no subscription or recurring charge.
+            Free includes up to {FREE_CLIENT_LIMIT} clients and basic personal workout tracking. The one-time CoachAura Premium purchase unlocks advanced Individual Mode analytics and unlimited clients. Google Play shows the price for your region; there is no subscription or recurring charge.
           </p>
         </div>
       </div>
       <ul className="mt-4 space-y-2 border-t border-[hsl(var(--border))] pt-4 text-xs">
-        {["Unlimited client profiles", "All client workout history stays on this device", "One-time purchase; no subscription"].map((item) =>
+        {["Unlimited client profiles", "Advanced personal strength, workload and muscle analytics", "Local-first data · one-time purchase · no subscription"].map((item) =>
           <li key={item} className="flex items-center gap-2"><Check size={14} className="text-[hsl(var(--primary))]"/>{item}</li>,
         )}
       </ul>
@@ -72,7 +72,7 @@ export function LifetimePaywall({ onClose }: { onClose: () => void }) {
         data-testid="button-buy-lifetime"
       >
         {billing.busy ? <LoaderCircle size={16} className="animate-spin"/> : <Crown size={16}/>}
-        {isLifetime ? "Lifetime access active" : billing.busy ? "Contacting Google Play…" : "Unlock unlimited clients"}
+        {isLifetime ? "Premium access active" : billing.busy ? "Contacting Google Play…" : "Unlock CoachAura Premium"}
       </button>
       <button type="button" className={`${quietBtn} w-full`} onClick={() => void billingController.refresh()} disabled={billing.busy} data-testid="button-restore-purchases">
         {billing.busy ? <LoaderCircle size={15} className="animate-spin"/> : <RotateCcw size={15}/>}

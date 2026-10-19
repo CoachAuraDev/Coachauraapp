@@ -146,6 +146,8 @@ function Dashboard() {
       return;
     }
     useFloor.getState().addDraftExercise(exercise);
+    const updatedDraft = useFloor.getState().draft;
+    if (!updatedDraft?.exercises.some((item) => item.id === exercise.id)) return;
     window.dispatchEvent(new Event("setstack:resume-workout"));
     setNotice(`${exercise.name} added to your personal workout.`);
   };
@@ -398,8 +400,8 @@ function SettingsPage() {
           <SectionTitle kicker="CoachAura plan" title={billing.status==="lifetime"?"Lifetime access":"Free plan"}/>
           <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
             {billing.status==="lifetime"
-              ? "Unlimited client profiles are enabled on this device."
-              : `Create up to ${FREE_CLIENT_LIMIT} client profiles for free. A one-time Google Play purchase unlocks unlimited clients; there are no subscriptions.`}
+              ? "Unlimited client profiles and advanced Individual Mode analytics are enabled on this device."
+              : `Create up to ${FREE_CLIENT_LIMIT} client profiles and use basic Individual Mode tracking for free. CoachAura Premium adds advanced personal analytics and unlimited clients with one lifetime purchase; no subscriptions.`}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" className={primaryBtn} onClick={()=>setPaywall(true)} data-testid="button-open-lifetime-paywall">

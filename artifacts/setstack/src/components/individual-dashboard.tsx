@@ -4,11 +4,13 @@ import {
   ArrowUpRight,
   CalendarDays,
   Dumbbell,
-  Library,
   Play,
   Plus,
   Sparkles,
   Trash2,
+  TrendingUp,
+  UserRound,
+  ChevronRight,
 } from "lucide-react";
 import {
   Area,
@@ -23,7 +25,8 @@ import {
 } from "recharts";
 import { useFloor } from "@/lib/gymmane/store";
 import { BackupReminderCard, useBackupReminder } from "@/components/backup-reminder";
-import { kExercises } from "@/lib/gymmane/catalog";
+import { kExercises, type CatalogExercise } from "@/lib/gymmane/catalog";
+import { ExerciseLibrary } from "@/components/trainer-dashboard";
 import {
   formatLoad,
   todayIso,
@@ -52,8 +55,11 @@ type IndividualDashboardProps = {
   profile: IndividualProfile;
   unit: Unit;
   draft: Draft | null;
+  premium: boolean;
   onStartWorkout: () => void;
-  onOpenExerciseLibrary: () => void;
+  onAddExerciseToWorkout: (exercise: CatalogExercise) => void;
+  onUpgrade: () => void;
+  onOpenSettings: () => void;
   onEditSession: (session: SessionLog) => void;
   onDeleteSession: (session: SessionLog) => void;
 };
@@ -87,19 +93,28 @@ export function IndividualDashboard({
   profile,
   unit,
   draft,
+  premium,
   onStartWorkout,
-  onOpenExerciseLibrary,
+  onAddExerciseToWorkout,
+  onUpgrade,
+  onOpenSettings,
   onEditSession,
   onDeleteSession,
 }: IndividualDashboardProps) {
+  type Tab = "progress" | "exercises" | "profile";
   const today = todayIso();
+  const [tab, setTab] = useState<Tab>("progress");
   const [range, setRange] = useState<IndividualRange>(30);
   const [strengthExerciseId, setStrengthExerciseId] = useState("");
   const [trendExerciseId, setTrendExerciseId] = useState("");
   const [muscleId, setMuscleId] = useState<MuscleGroup>("chest");
   const [trendMetric, setTrendMetric] = useState<TrendMetric>("sets");
+  const [openDetails, setOpenDetails] = useState<Record<string, boolean>>({});
+  const [visibleSessionCount, setVisibleSessionCount] = useState(6);
   const custom = useFloor((state) => state.custom);
   const clients = useFloor((state) => state.clients);
+  const setUnit = useFloor((state) => state.setUnit);
+  const setRest = useFloor((state) => state.setRest);
   const backupReminder = useBackupReminder();
   const owner = useMemo(() => individualWorkoutOwner(profile), [profile]);
   const library = useMemo(() => [...kExercises, ...custom], [custom]);
@@ -144,17 +159,29 @@ export function IndividualDashboard({
     () => getTrainingTrend(owner, range, today, { kind: "all" }, library),
     [owner, range, today, library],
   );
-  const records = useMemo(() => getPersonalRecordEvents(owner, today).slice(-8).reverse(), [owner, today]);
+  const allRecords = useMemo(() => getPersonalRecordEvents(owner, today), [owner, today]);
+  const records = useMemo(() => allRecords.slice(-8).reverse(), [allRecords]);
+  const personalBests = useMemo(() => {
+    const byExercise = new Map<string, (typeof allRecords)[number]>();
+    for (const event of allRecords) {
+      const previous = byExercise.get(event.exerciseId);
+      if (!previous || event.e1rmKg > previous.e1rmKg) byExercise.set(event.exerciseId, event);
+    }
+    return [...byExercise.values()].sort((a, b) => b.e1rmKg - a.e1rmKg).slice(0, 5);
+  }, [allRecords]);
   const recentSessions = useMemo(
     () => [...profile.sessions].filter((session) => session.date <= today)
-      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
-      .slice(0, 6),
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),
     [profile.sessions, today],
   );
+  const setDetailsOpen = (key: string, isOpen: boolean) => setOpenDetails((current) => ({ ...current, [key]: isOpen }));
+  const appearance = useFloor((state) => state.appearance);
+  const restSeconds = profile.restSeconds;
   const activeExerciseName = strengthOptions.find((option) => option.id === activeStrengthId)?.name ?? "";
   const totalTrendValue = trainingTrend.reduce((sum, point) => sum + trendValue(point, trendMetric, trendFilter), 0);
   return (
-    <div className="min-w-0 space-y-5 [overflow-wrap:anywhere]" data-testid="individual-dashboard">
+    <div className="min-w-0 space-y-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] [overflow-wrap:anywhere]" data-testid="individual-dashboard">
+      {tab === "progress" && <>
       <header className="relative overflow-hidden rounded-[1.75rem] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 sm:p-7">
         <div aria-hidden="true" className="pointer-events-none absolute -right-14 -top-20 h-56 w-56 rounded-full bg-[hsl(var(--primary))]/10 blur-3xl" />
         <div className="relative flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -164,8 +191,7 @@ export function IndividualDashboard({
             <p className={`mt-3 max-w-xl text-sm leading-relaxed ${muted}`}>A personal view of completed work, strength markers and the rhythm you are building.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={quietButton} onClick={onOpenExerciseLibrary} data-testid="button-individual-open-library"><Library size={16} />Exercise library</button>
-             <button type="button" className={primaryButton} onClick={onStartWorkout} data-testid="button-individual-start-workout"><Play size={16} />{draft ? draft.clientId === INDIVIDUAL_PROFILE_ID ? "Continue session" : "Resume active session" : "Start session"}</button>
+            <button type="button" className={primaryButton} onClick={onStartWorkout} data-testid="button-individual-start-workout"><Play size={16} />{draft ? draft.clientId === INDIVIDUAL_PROFILE_ID ? "Continue session" : "Resume active session" : "Start session"}</button>
           </div>
         </div>
       </header>
@@ -198,21 +224,28 @@ export function IndividualDashboard({
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={`${range}-day training summary`} data-testid="individual-overview-stats">
+      <section className="grid grid-cols-2 gap-2" aria-label={`${range}-day training summary`} data-testid="individual-overview-stats">
         <div className={`${panel} p-3 sm:p-4`}><p className={kicker}>Workouts</p><p className="display-font mt-2 text-2xl font-semibold tabular-nums" data-testid="text-individual-workouts">{overview.workouts}</p><p className={`mt-1 text-[11px] ${muted}`}>{overview.workoutsThisWeek} this week</p></div>
         <div className={`${panel} p-3 sm:p-4`}><p className={kicker}>Working sets</p><p className="display-font mt-2 text-2xl font-semibold tabular-nums" data-testid="text-individual-working-sets">{overview.workingSets.toLocaleString()}</p><p className={`mt-1 text-[11px] ${muted}`}>Warm-ups excluded</p></div>
-        <div className={`${panel} p-3 sm:p-4`}><p className={kicker}>Load volume</p><p className="display-font mt-2 text-xl font-semibold tabular-nums" data-testid="text-individual-volume">{volumeLabel(overview.volumeKg, unit)}</p><p className={`mt-1 text-[11px] ${muted}`}>Σ reps × stored load</p></div>
-        <div className={`${panel} p-3 sm:p-4`}><p className={kicker}>Personal records</p><p className="display-font mt-2 text-2xl font-semibold tabular-nums" data-testid="text-individual-records">{overview.recordsAchieved}</p><p className={`mt-1 text-[11px] ${muted}`}>{overview.activeWeeksLastFour} active weeks · last 4</p></div>
       </section>
 
-      <div className="min-w-0" data-testid="region-individual-muscle-analytics">
-        <Suspense fallback={<div className={panel} role="status">Loading muscle analytics…</div>}>
-          <MuscleActivityDashboard client={owner} individual onStartWorkout={onStartWorkout}/>
-        </Suspense>
-      </div>
+      <section className={`${panel} flex flex-wrap items-center justify-between gap-3`} data-testid="individual-consistency-summary">
+        <div><p className={kicker}>Training consistency</p><h2 className="display-font mt-1 text-lg font-semibold">{overview.activeWeeksLastFour} of the last 4 weeks active</h2><p className={`mt-1 text-xs ${muted}`}>Based on completed workouts with working sets.</p></div>
+        <span className="rounded-xl bg-[hsl(var(--accent))] px-3 py-2 text-sm font-semibold text-[hsl(var(--primary))]">{overview.workoutsThisWeek} this week</span>
+      </section>
 
-      <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,.9fr)]">
+      {premium && <details className={panel} onToggle={(event) => setDetailsOpen("muscles", event.currentTarget.open)} data-testid="details-individual-muscle-analytics">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><span><span className={kicker}>Advanced analytics</span><span className="display-font mt-1 block text-lg font-semibold">Muscle activity and recovery</span></span><ChevronRight size={18} className={`shrink-0 transition-transform ${openDetails.muscles ? "rotate-90" : ""}`} aria-hidden="true"/></summary>
+        {openDetails.muscles && <div className="mt-4 min-w-0" data-testid="region-individual-muscle-analytics">
+          <Suspense fallback={<div className={panel} role="status">Loading muscle analytics…</div>}>
+            <MuscleActivityDashboard client={owner} individual onStartWorkout={onStartWorkout}/>
+          </Suspense>
+        </div>}
+      </details>}
+
+      <div className="min-w-0">
         <section className={panel} data-testid="region-individual-strength-trend">
+          {premium ? <>
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
             <div><p className={kicker}>Strength marker</p><h2 className="display-font mt-1 text-xl font-semibold">Estimated 1RM</h2><p className={`mt-1 text-xs ${muted}`}>One best working-set estimate per logged session. No interpolation.</p></div>
             {strengthOptions.length > 0 && <label className="min-w-0 sm:w-[48%]"><span className="sr-only">Exercise for estimated 1RM trend</span><select className={field} value={activeStrengthId} onChange={(event) => setStrengthExerciseId(event.target.value)} aria-label="Exercise for estimated 1RM trend" data-testid="select-individual-strength-exercise">{strengthOptions.map((option) => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>}
@@ -246,9 +279,18 @@ export function IndividualDashboard({
               <p className={`mt-2 text-[10px] leading-relaxed ${muted}`}>An estimate from your best logged working set; it is not a tested maximum.</p>
             </>
           )}
+          </> : <div className="flex min-h-[260px] flex-col items-start justify-center">
+            <p className={kicker}>CoachAura Premium</p><h2 className="display-font mt-1 text-xl font-semibold">Strength progression</h2>
+            <p className={`mt-2 max-w-lg text-sm leading-relaxed ${muted}`}>Unlock estimated 1RM trends, detailed training volume and muscle analytics, plus unlimited trainer clients. The one-time CoachAura Premium purchase has no subscription; Google Play shows the price for your region.</p>
+            <button type="button" className={`${primaryButton} mt-4`} onClick={onUpgrade} data-testid="button-individual-premium-upgrade"><Sparkles size={16}/>Explore CoachAura Premium</button>
+          </div>}
         </section>
 
-        <section className={panel} data-testid="region-individual-training-trend">
+      </div>
+
+      {premium && <details className={panel} onToggle={(event) => setDetailsOpen("volume", event.currentTarget.open)} data-testid="details-individual-volume">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><span><span className={kicker}>Advanced analytics</span><span className="display-font mt-1 block text-lg font-semibold">Training volume and working-set trends</span></span><ChevronRight size={18} className={`shrink-0 transition-transform ${openDetails.volume ? "rotate-90" : ""}`} aria-hidden="true"/></summary>
+        {openDetails.volume && <section className={`${panel} mt-4`} data-testid="region-individual-training-trend">
           <div className="flex flex-col gap-3">
             <div><p className={kicker}>Logged workload</p><h2 className="display-font mt-1 text-xl font-semibold">Training trend</h2><p className={`mt-1 text-xs ${muted}`}>Completed work only; warm-ups excluded.</p></div>
             <div className="grid grid-cols-2 gap-2">
@@ -278,9 +320,12 @@ export function IndividualDashboard({
             <div className="mt-3 flex min-h-[220px] items-center justify-center rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] px-4 text-center" data-testid="empty-individual-training-trend"><div><p className="text-sm font-semibold">No logged work in this period</p><p className={`mt-1 text-xs leading-relaxed ${muted}`}>Complete a session and this trend will follow your actual training.</p></div></div>
           )}
           <p className={`mt-2 text-[10px] leading-relaxed ${muted}`}>Load volume = Σ working-set reps × stored load. Warm-ups are excluded.</p>
-        </section>
-      </div>
+        </section>}
+      </details>}
 
+      {premium && <details className={panel} onToggle={(event) => setDetailsOpen("workload", event.currentTarget.open)} data-testid="details-individual-workload">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3"><span><span className={kicker}>Advanced analytics</span><span className="display-font mt-1 block text-lg font-semibold">Training volume, frequency and records</span></span><ChevronRight size={18} className={`shrink-0 transition-transform ${openDetails.workload ? "rotate-90" : ""}`} aria-hidden="true"/></summary>
+        {openDetails.workload && <div className="mt-4">
       <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,.85fr)]">
         <section className={panel} data-testid="region-individual-workout-frequency">
           <div className="flex items-end justify-between gap-3"><div><p className={kicker}>Consistency</p><h2 className="display-font mt-1 text-xl font-semibold">Workout frequency</h2><p className={`mt-1 text-xs ${muted}`}>Sessions with working sets · {range} days</p></div><span className="mono text-xs text-[hsl(var(--primary))]">{overview.workouts} total</span></div>
@@ -300,10 +345,37 @@ export function IndividualDashboard({
           <p className={`mt-2 text-[10px] leading-relaxed ${muted}`}>Events are estimates from logged working sets, not tested maximums.</p>
         </section>
       </div>
+        </div>}
+      </details>}
+
+      <p className={`px-1 text-[10px] leading-relaxed ${muted}`} data-testid="text-individual-analytics-method">Completed sessions only. Working-set load volume is Σ reps × stored load; warm-ups are excluded. Strength values are estimates from the logged set data. No dates or values are interpolated.</p>
+      </>}
+
+      {tab === "exercises" && <ExerciseLibrary inline onSelect={onAddExerciseToWorkout}/>}
+
+      {tab === "profile" && <>
+      <header className="relative overflow-hidden rounded-[1.75rem] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 sm:p-7">
+        <p className={kicker}>Individual mode</p><h1 className="display-font mt-2 text-3xl font-semibold tracking-tight">Profile</h1>
+        <p className={`mt-2 max-w-xl text-sm leading-relaxed ${muted}`}>Your personal workout history and training preferences stay separate from trainer-managed clients.</p>
+      </header>
+
+      <section className={panel} data-testid="individual-profile-preferences">
+        <div className="flex items-start justify-between gap-3"><div><p className={kicker}>Training preferences</p><h2 className="display-font mt-1 text-xl font-semibold">Your setup</h2></div><button type="button" className={quietButton} onClick={onOpenSettings} data-testid="button-individual-settings">App settings<ChevronRight size={15}/></button></div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div><p className="mb-2 text-xs font-semibold">Default rest timer</p><div className="flex flex-wrap gap-2" role="group" aria-label="Personal default rest timer">{[0, 60, 90, 120].map((seconds) => <button key={seconds} type="button" aria-pressed={restSeconds === seconds} className={`min-h-10 rounded-lg border px-3 text-xs font-semibold ${restSeconds === seconds ? "border-[hsl(var(--primary))] bg-[hsl(var(--accent))] text-[hsl(var(--primary))]" : "border-[hsl(var(--border))] bg-[hsl(var(--background))]"}`} onClick={() => setRest(INDIVIDUAL_PROFILE_ID, seconds)} data-testid={`button-individual-rest-${seconds}`}>{seconds === 0 ? "Off" : `${seconds}s`}</button>)}</div></div>
+          <div><p className="mb-2 text-xs font-semibold">Weight units</p><div className="flex gap-2" role="group" aria-label="Weight units">{(["kg", "lb"] as const).map((value) => <button key={value} type="button" aria-pressed={unit === value} className={`min-h-10 rounded-lg border px-4 text-xs font-semibold uppercase ${unit === value ? "border-[hsl(var(--primary))] bg-[hsl(var(--accent))] text-[hsl(var(--primary))]" : "border-[hsl(var(--border))] bg-[hsl(var(--background))]"}`} onClick={() => setUnit(value)} data-testid={`button-individual-unit-${value}`}>{value}</button>)}</div></div>
+        <div className="sm:col-span-2"><p className="mb-2 text-xs font-semibold">Colour theme</p><p className={`text-sm ${muted}`}>{appearance === "orange-charcoal" ? "Peach Theme" : "Original Lime Green"} · change this in app Settings.</p></div>
+        </div>
+      </section>
+
+      <section className={panel} data-testid="individual-personal-bests">
+        <div className="flex items-end justify-between gap-3"><div><p className={kicker}>Personal records</p><h2 className="display-font mt-1 text-xl font-semibold">Current bests</h2><p className={`mt-1 text-xs ${muted}`}>Best logged working-set estimates, by exercise.</p></div><span className="text-xs text-[hsl(var(--primary))]">{personalBests.length} exercises</span></div>
+        {personalBests.length ? <ul className="mt-3 divide-y divide-[hsl(var(--border))]">{personalBests.map((event) => <li key={event.exerciseId} className="flex items-center gap-3 py-3"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--muted))]"><Dumbbell size={16} className="text-[hsl(var(--primary))]"/></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{event.exerciseName}</p><p className={`mt-1 text-[10px] ${muted}`}>{event.reps} reps at {formatLoad(event.weightKg, unit)} · {dateLabel(event.date)}</p></div><span className="mono text-xs font-semibold text-[hsl(var(--primary))]">{formatLoad(event.e1rmKg, unit)} est.</span></li>)}</ul> : <p className={`mt-4 rounded-xl border border-dashed border-[hsl(var(--border))] p-4 text-sm ${muted}`} data-testid="empty-individual-personal-bests">Log a working set to record your first personal best.</p>}
+      </section>
 
       <section className={panel} data-testid="region-individual-sessions">
-        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className={kicker}>Your log</p><h2 className="display-font mt-1 text-xl font-semibold">Recent sessions</h2><p className={`mt-1 text-xs ${muted}`}>Saved personal workouts on this device.</p></div>{!recentSessions.length && <button type="button" className={primaryButton} onClick={onStartWorkout} data-testid="button-empty-sessions-start"><Plus size={16}/>Start your first session</button>}</div>
-        {recentSessions.length ? <ul className="mt-4 divide-y divide-[hsl(var(--border))]">{recentSessions.map((session) => {
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><p className={kicker}>Your log</p><h2 className="display-font mt-1 text-xl font-semibold">Workout history</h2><p className={`mt-1 text-xs ${muted}`}>Saved personal workouts on this device.</p></div>{!recentSessions.length && <button type="button" className={primaryButton} onClick={onStartWorkout} data-testid="button-empty-sessions-start"><Plus size={16}/>Start your first session</button>}</div>
+        {recentSessions.length ? <ul className="mt-4 divide-y divide-[hsl(var(--border))]">{recentSessions.slice(0, visibleSessionCount).map((session) => {
           const setCount = session.exercises.reduce((sum, exercise) => sum + exercise.sets.filter((set) => set.kind !== "warmup" && set.reps > 0).length, 0);
           return <li key={session.id} className="flex min-w-0 items-center gap-3 py-3" data-testid={`row-individual-session-${session.id}`}>
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--muted))]"><CalendarDays size={17} className="text-[hsl(var(--primary))]"/></span>
@@ -311,10 +383,20 @@ export function IndividualDashboard({
             <button type="button" className="min-h-10 rounded-lg px-3 text-xs font-semibold hover:bg-[hsl(var(--muted))]" onClick={() => onEditSession(session)} aria-label={`Edit ${session.name || "personal workout"} from ${dateLabel(session.date)}`} data-testid={`button-edit-individual-session-${session.id}`}>Edit</button>
             <button type="button" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--destructive))]" onClick={() => onDeleteSession(session)} aria-label={`Delete ${session.name || "personal workout"} from ${dateLabel(session.date)}`} data-testid={`button-delete-individual-session-${session.id}`}><Trash2 size={16}/></button>
           </li>;
-        })}</ul> : <div className="mt-4 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-8 text-center" data-testid="empty-individual-sessions"><CalendarDays className="mx-auto text-[hsl(var(--primary))]" size={20}/><h3 className="mt-2 font-semibold">Your training log is ready</h3><p className={`mx-auto mt-1 max-w-md text-sm leading-relaxed ${muted}`}>Completed personal sessions will collect here. Start a workout or open the exercise library to plan what you want to train.</p><button type="button" className={`${quietButton} mt-3`} onClick={onOpenExerciseLibrary} data-testid="button-empty-sessions-library"><Library size={15}/>Browse exercises</button></div>}
+        })}</ul> : <div className="mt-4 rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] px-5 py-8 text-center" data-testid="empty-individual-sessions"><CalendarDays className="mx-auto text-[hsl(var(--primary))]" size={20}/><h3 className="mt-2 font-semibold">Your training log is ready</h3><p className={`mx-auto mt-1 max-w-md text-sm leading-relaxed ${muted}`}>Completed personal sessions will collect here. Start a workout or choose an exercise to begin.</p><button type="button" className={`${quietButton} mt-3`} onClick={() => setTab("exercises")} data-testid="button-empty-sessions-library"><Dumbbell size={15}/>Browse exercises</button></div>}
+        {recentSessions.length > visibleSessionCount && <button type="button" className={`${quietButton} mt-3 w-full`} onClick={() => setVisibleSessionCount((count) => count + 20)} data-testid="button-individual-older-sessions">Show older workouts</button>}
       </section>
+      </>}
 
-      <p className={`px-1 text-[10px] leading-relaxed ${muted}`} data-testid="text-individual-analytics-method">Completed sessions only. Working-set load volume is Σ reps × stored load; warm-ups are excluded. Strength values are estimates from the logged set data. No dates or values are interpolated.</p>
+      <nav aria-label="Individual mode navigation" className="fixed inset-x-0 bottom-0 z-40 border-t border-[hsl(var(--border))] bg-[hsl(var(--background))]/95 px-3 pt-2 pb-[calc(.25rem+env(safe-area-inset-bottom))] backdrop-blur lg:left-[248px]" data-testid="individual-bottom-navigation">
+        <div className="mx-auto grid max-w-xl grid-cols-3 gap-2">
+          {([
+            { id: "progress" as const, label: "Progress", Icon: TrendingUp },
+            { id: "exercises" as const, label: "Exercises", Icon: Dumbbell },
+            { id: "profile" as const, label: "Profile", Icon: UserRound },
+          ]).map(({ id, label, Icon }) => <button key={id} type="button" aria-current={tab === id ? "page" : undefined} aria-pressed={tab === id} onClick={() => setTab(id)} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-semibold transition-colors ${tab === id ? "bg-[hsl(var(--accent))] text-[hsl(var(--primary))]" : `${muted} hover:bg-[hsl(var(--muted))]`}`} data-testid={`tab-individual-${id}`}><Icon size={18} aria-hidden="true"/><span>{label}</span></button>)}
+        </div>
+      </nav>
     </div>
   );
 }
