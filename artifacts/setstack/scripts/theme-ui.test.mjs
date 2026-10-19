@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
 import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
-import { analyzeMuscleActivity, effortFactorFromRpe, mapExerciseMuscles } from "../src/lib/gymmane/muscle-activity.ts";
+import { analyzeMuscleActivity, effortFactorFromRpe, mapExerciseMuscles, MUSCLE_GROUPS } from "../src/lib/gymmane/muscle-activity.ts";
 import { kExercises } from "../src/lib/gymmane/catalog.ts";
 
 const appDirectory = fileURLToPath(new URL("../", import.meta.url));
@@ -2164,6 +2164,143 @@ async function verifyExerciseIllustrations(page, baseUrl, appearance) {
   assert.deepEqual((await storedState(page)).clients, before.clients, "Browsing illustrations and cancelling a routine must not alter client data");
 }
 
+async function verifyCustomExerciseMuscleContributors(page, baseUrl, fixtureClient) {
+  const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
+  assert.ok(originalStorage, "The original browser fixture should be available for restoration");
+  const isolatedStore = JSON.parse(originalStorage);
+  isolatedStore.state.clients = [structuredClone(fixtureClient)];
+  isolatedStore.state.custom = [];
+  isolatedStore.state.draft = null;
+  await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(JSON.stringify(isolatedStore))})`);
+
+  async function readContributorPanels(exerciseId) {
+    const panels = {};
+    for (const group of MUSCLE_GROUPS) {
+      let visible = await page.evaluate(
+        `!!document.querySelector('[data-testid="button-muscle-${group.id}"]')`,
+      );
+      if (!visible) {
+        await page.click("button-muscle-view-front");
+        visible = await page.evaluate(
+          `!!document.querySelector('[data-testid="button-muscle-${group.id}"]')`,
+        );
+      }
+      if (!visible) {
+        await page.click("button-muscle-view-back");
+        visible = await page.evaluate(
+          `!!document.querySelector('[data-testid="button-muscle-${group.id}"]')`,
+        );
+      }
+      assert.equal(visible, true, `The ${group.label} contributor panel should be selectable`);
+      await page.click(`button-muscle-${group.id}`);
+      panels[group.id] = await page.evaluate(`(() => {
+        const row = document.querySelector('[data-testid="row-muscle-contributor-${exerciseId}"]');
+        return row?.querySelector("p:last-child")?.textContent?.trim() ?? null;
+      })()`);
+    }
+    return panels;
+  }
+
+  async function assertOnlyMappedPanels(expectedPrimary, expectedSecondary, exerciseId, description) {
+    const panels = await readContributorPanels(exerciseId);
+    const expected = new Set([expectedPrimary, expectedSecondary]);
+    assert.deepEqual(
+      Object.entries(panels).filter(([, details]) => details !== null).map(([group]) => group).sort(),
+      [...expected].sort(),
+      `${description}: the exercise should appear only in its configured primary and secondary panels`,
+    );
+    assert.equal(panels[expectedPrimary], "1 direct · 0 indirect sets · 1.00 weighted");
+    assert.equal(panels[expectedSecondary], "0 direct · 1 indirect sets · 0.50 weighted");
+  }
+
+  try {
+    await navigate(page, `${baseUrl}/`, "dashboard-columns");
+    await navigate(page, `${baseUrl}/clients/${fixtureClient.id}`, "button-empty-create-routine");
+    await page.click("button-empty-create-routine");
+    await waitFor("custom exercise routine editor", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="section-custom-exercise"]\')',
+    ));
+    await page.fill("input-routine-name", "Custom mapping regression");
+    await page.click("button-expand-custom-exercise");
+    await page.fill("input-custom-exercise-name", "Custom Chest Press");
+    await page.fill("select-custom-primary-muscle", "chest");
+    await page.click("checkbox-custom-secondary-calves");
+    await page.click("button-create-custom-exercise");
+    await waitFor("created mapped custom exercise", async () => {
+      const state = await storedState(page);
+      return state.custom.find((exercise) => exercise.name === "Custom Chest Press");
+    }, (exercise) => exercise?.primary === "chest" && exercise.secondary.includes("calves"));
+
+    const createdState = await storedState(page);
+    const custom = createdState.custom.find((exercise) => exercise.name === "Custom Chest Press");
+    assert.ok(custom, "The custom exercise should be saved");
+    assert.equal(custom.muscleMappingExplicit, true, "A user-assigned map should be marked explicit");
+    assert.deepEqual(custom.secondary, ["calves"]);
+    await page.click("button-save-routine");
+    await waitFor("custom mapping routine saved", async () => {
+      const state = await storedState(page);
+      return state.clients[0]?.routines.find((routine) => routine.name === "Custom mapping regression");
+    });
+    const savedRoutine = (await storedState(page)).clients[0].routines.find(
+      (routine) => routine.name === "Custom mapping regression",
+    );
+    assert.ok(savedRoutine?.exerciseIds.includes(custom.id), "The new custom exercise should be part of its saved routine");
+    await page.click(`button-start-routine-${savedRoutine.id}`);
+    await waitFor("custom exercise workout logger", () => page.evaluate(
+      'document.querySelector(\'[data-testid="text-current-exercise"]\')?.textContent',
+    ), (name) => name === "Custom Chest Press");
+    await page.fill("input-set-weight", "40");
+    await page.fill("input-set-reps", "8");
+    await page.click("button-log-set");
+    await waitFor("custom exercise work set", () => page.evaluate(
+      'document.querySelector(\'[data-testid="list-current-sets"]\')?.textContent',
+    ), (text) => text?.includes("40 kg × 8"));
+    await page.click("button-finish-session");
+    await waitFor("saved custom exercise workout", async () => {
+      const state = await storedState(page);
+      return state.clients[0]?.sessions.at(-1)?.exercises.some((exercise) => exercise.id === custom.id);
+    });
+    await navigate(page, `${baseUrl}/clients/${fixtureClient.id}?tab=muscles`, "dashboard-muscle-activity");
+    await assertOnlyMappedPanels("chest", "calves", custom.id, "Created custom mapping");
+
+    await reloadAndWait(page, "reloaded custom exercise contributor panels", "dashboard-muscle-activity");
+    await assertOnlyMappedPanels("chest", "calves", custom.id, "Created mapping after reload");
+
+    await navigate(page, `${baseUrl}/clients/${fixtureClient.id}`, "button-edit-routine-" + savedRoutine.id);
+    await page.click("button-edit-routine-" + savedRoutine.id);
+    await waitFor("edit custom mapping routine", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="section-custom-exercise"]\')',
+    ));
+    await page.click("button-expand-custom-exercise");
+    await page.fill("select-custom-exercise-edit", custom.id);
+    await page.fill("select-custom-primary-muscle", "quadriceps");
+    await page.click("checkbox-custom-secondary-calves");
+    await page.click("checkbox-custom-secondary-hamstrings");
+    await page.click("button-save-custom-mapping");
+    await waitFor("updated custom muscle mapping", async () => {
+      const state = await storedState(page);
+      const exercise = state.custom.find((item) => item.id === custom.id);
+      return exercise?.primary === "quadriceps" && exercise.secondary.includes("hamstrings");
+    });
+    assert.equal((await storedState(page)).custom.find((item) => item.id === custom.id)?.muscleMappingExplicit, true);
+    await page.click("button-cancel-routine");
+    await navigate(page, `${baseUrl}/clients/${fixtureClient.id}?tab=muscles`, "dashboard-muscle-activity");
+    await assertOnlyMappedPanels("quadriceps", "hamstrings", custom.id, "Edited custom mapping");
+
+    await reloadAndWait(page, "reloaded edited custom mapping panels", "dashboard-muscle-activity");
+    await assertOnlyMappedPanels("quadriceps", "hamstrings", custom.id, "Edited mapping after reload");
+    const persisted = await storedState(page);
+    assert.deepEqual(
+      persisted.custom.find((item) => item.id === custom.id),
+      { ...custom, primary: "quadriceps", secondary: ["hamstrings"], muscleMappingExplicit: true },
+      "The edited muscle assignment should remain saved after reload",
+    );
+  } finally {
+    await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(originalStorage)})`);
+    await navigate(page, `${baseUrl}/`, "dashboard-columns");
+  }
+}
+
 async function verifyFirstLaunchIntro(page, baseUrl) {
   await navigate(page, `${baseUrl}/`, "first-launch-intro");
   const splash = await page.evaluate(`({
@@ -2513,6 +2650,14 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Moving the last recent workout clears selected-period workload while retaining history and recovery");
   await correctSavedEffortAndVerifyCharts(page, baseUrl);
   t.diagnostic("Effort corrections update the recovery estimate from the latest valid exposure and persist after reload");
+  const customMappingClient = structuredClone(initialClients.find((item) => item.id === "seed-amina"));
+  customMappingClient.id = "test-custom-exercise-mappings";
+  customMappingClient.name = "Custom exercise mapping fixture";
+  customMappingClient.sessions = [];
+  customMappingClient.routines = [];
+  customMappingClient.weeklyPlan = {};
+  await verifyCustomExerciseMuscleContributors(page, baseUrl, customMappingClient);
+  t.diagnostic("Custom exercise creation, edits, exact primary/secondary contributor panels, and reload persistence verified");
 
   await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "client-training-analytics");
   await page.evaluate(`(() => {
