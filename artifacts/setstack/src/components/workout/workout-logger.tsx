@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, Check, ChevronDown, Copy, Dumbbell, Pencil, Plus, Trash2, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Copy, Dumbbell, GripVertical, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { fromDisplay, formatLoad, shortDate, toDisplay } from "@/lib/gymmane/engine";
@@ -8,6 +8,7 @@ import { nextSetDefaults, plannedSetCount, previousExercisePerformance } from "@
 import { isRapidDuplicateSubmission, type SubmissionFingerprint } from "@/lib/gymmane/submission-guard";
 import type { DraftEntry, SetLog } from "@/lib/gymmane/models";
 import { RestTimer } from "./rest-timer";
+import { SwipeAdjustInput } from "./swipe-adjust-input";
 import { fieldClass, labelClass, primaryBtn, quietBtn, rirText, type AskConfirm } from "./shared";
 
 type Fields = {
@@ -91,6 +92,7 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   const setActive = useFloor((s) => s.setActive);
   const setDraftEntry = useFloor((s) => s.setDraftEntry);
   const addDraftExercise = useFloor((s) => s.addDraftExercise);
+  const moveDraftExercise = useFloor((s) => s.moveDraftExercise);
   const removeDraftExercise = useFloor((s) => s.removeDraftExercise);
   const finishSession = useFloor((s) => s.finishSession);
   const discardDraft = useFloor((s) => s.discardDraft);
@@ -99,6 +101,18 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   const [showAdd, setShowAdd] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState("");
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const [reorderStatus, setReorderStatus] = useState("");
+  const exerciseDrag = useRef<{
+    pointerId: number;
+    from: number;
+    to: number;
+    startX: number;
+    startY: number;
+    timer: number;
+    dragging: boolean;
+  } | null>(null);
   const lastSubmitted = useRef<SubmissionFingerprint | null>(null);
   const userInputRevision = useRef(0);
   useEffect(() => setMinimized(false), [draft?.startedAt, draft?.clientId]);
@@ -134,6 +148,57 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
       window.scrollTo(0, scrollY);
     };
   }, [draft?.startedAt, minimized]);
+  useEffect(() => {
+    const clearDrag = (event?: PointerEvent) => {
+      const drag = exerciseDrag.current;
+      if (!drag || (event && event.pointerId !== drag.pointerId)) return;
+      window.clearTimeout(drag.timer);
+      exerciseDrag.current = null;
+      setDragFrom(null);
+      setDropIndex(null);
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      const drag = exerciseDrag.current;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      if (!drag.dragging) {
+        if (Math.abs(event.clientX - drag.startX) > 10 || Math.abs(event.clientY - drag.startY) > 10) clearDrag(event);
+        return;
+      }
+      const row = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-logger-exercise-index]");
+      const index = row?.dataset.loggerExerciseIndex;
+      if (index !== undefined && Number.isInteger(Number(index))) {
+        drag.to = Number(index);
+        setDropIndex(drag.to);
+      }
+    };
+    const onPointerUp = (event: PointerEvent) => {
+      const drag = exerciseDrag.current;
+      if (!drag || event.pointerId !== drag.pointerId) return;
+      const { from, to, dragging } = drag;
+      if (dragging && from !== to) {
+        const name = useFloor.getState().draft?.exercises[from]?.name;
+        moveDraftExercise(from, to);
+        if (name) setReorderStatus(`Moved ${name} to position ${to + 1}.`);
+      }
+      clearDrag(event);
+    };
+    const onPointerCancel = (event: PointerEvent) => clearDrag(event);
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", onPointerUp, true);
+    window.addEventListener("pointercancel", onPointerCancel, true);
+    return () => {
+      clearDrag();
+      window.removeEventListener("pointermove", onPointerMove, true);
+      window.removeEventListener("pointerup", onPointerUp, true);
+      window.removeEventListener("pointercancel", onPointerCancel, true);
+    };
+  }, [moveDraftExercise]);
+  useEffect(() => {
+    if (dragFrom === null) return;
+    const oldSelection = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    return () => { document.body.style.userSelect = oldSelection; };
+  }, [dragFrom]);
 
   const client = draft ? clients.find((c) => c.id === draft.clientId) : undefined;
   const routine = client?.routines.find((r) => r.id === draft?.routineId);
@@ -173,6 +238,28 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
     setF(next);
     setError("");
     if (active) setDraftEntry(active.id, fieldsToEntry(next, unit));
+  };
+  const beginExerciseReorder = (event: React.PointerEvent<HTMLButtonElement>, index: number) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.stopPropagation();
+    window.clearTimeout(exerciseDrag.current?.timer);
+    const drag = {
+      pointerId: event.pointerId,
+      from: index,
+      to: index,
+      startX: event.clientX,
+      startY: event.clientY,
+      timer: 0,
+      dragging: false,
+    };
+    exerciseDrag.current = drag;
+    drag.timer = window.setTimeout(() => {
+      if (exerciseDrag.current !== drag) return;
+      drag.dragging = true;
+      setReorderStatus("");
+      setDragFrom(index);
+      setDropIndex(index);
+    }, 350);
   };
   const workCount = active ? active.sets.filter((s) => s.kind !== "warmup").length : 0;
   const planned = active ? plannedSetCount(routine, active.id) : 0;
@@ -224,7 +311,7 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
         <h2 className="display-font mt-0.5 truncate text-lg font-semibold sm:text-xl" data-testid="text-workout-title">{draft.name}</h2>
       </div>
       <div className="flex shrink-0 items-center gap-1">
-        <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))]" onClick={() => setShowAdd(!showAdd)} aria-label="Add exercise" aria-expanded={showAdd} data-testid="button-logger-add-exercise"><Plus size={17}/></button>
+        <button type="button" className={`${quietBtn} h-11 min-h-11 shrink-0 px-3`} onClick={() => setShowAdd(!showAdd)} aria-label="Add exercise" aria-expanded={showAdd} data-testid="button-logger-add-exercise"><Plus size={16}/><span>Add exercise</span></button>
         <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))]" onClick={() => setMinimized(true)} aria-label="Minimize workout without discarding it" data-testid="button-minimize-session"><ChevronDown size={17}/></button>
         <button type="button" className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]" onClick={() => ask({ title: "Discard workout?", message: "Discard this unfinished workout? Every logged set will be lost.", confirmLabel: "Discard", onConfirm: () => discardDraft() })} aria-label="Discard workout" data-testid="button-discard-session"><X size={17}/></button>
       </div>
@@ -239,7 +326,48 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
         </div>}
         <RestTimer defaultSeconds={defaultRest} compact/>
         {draft.exercises.length === 0 ? <div className="rounded-xl border border-dashed border-[hsl(var(--border))] p-6 text-center"><Dumbbell className="mx-auto text-[hsl(var(--muted-foreground))]" size={24}/><p className="mt-2 text-sm font-semibold">Make this session yours</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Add the first exercise to start logging.</p><button type="button" className={`${primaryBtn} mt-3`} onClick={() => setShowAdd(true)} data-testid="button-logger-empty-add"><Plus size={15}/>Add exercise</button></div> : <>
-          <div className="mb-4 flex gap-2 overflow-x-auto pb-1" aria-label="Workout exercises" data-testid="list-logger-exercises">{draft.exercises.map((ex, index) => { const p = plannedSetCount(routine, ex.id); return <button type="button" key={`${ex.id}-${index}`} onClick={() => setActive(index)} aria-current={index === draft.activeIndex} className={`shrink-0 rounded-xl px-3 py-2 text-left text-xs ${index === draft.activeIndex ? "bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]" : "bg-[hsl(var(--muted))]"}`} data-testid={`button-select-logger-exercise-${index}`}><span className="block max-w-40 truncate font-semibold">{ex.name}</span><span className="mono mt-1 block opacity-70">{ex.sets.length}{p ? ` / ${p}` : ""} sets</span></button>; })}</div>
+          <div className="mb-4" aria-label="Workout exercises. Hold a grip and drag to reorder." data-testid="list-logger-exercises">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="mono text-[9px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Exercise order</p>
+              <p className="text-[10px] text-[hsl(var(--muted-foreground))]">Hold grip to reorder</p>
+            </div>
+            <div className="max-h-44 space-y-1.5 overflow-y-auto overscroll-contain pr-1">
+            {draft.exercises.map((ex, index) => {
+              const plannedCount = plannedSetCount(routine, ex.id);
+              const isActive = index === draft.activeIndex;
+              const isDragging = dragFrom === index;
+              const isDropTarget = dropIndex === index && dragFrom !== null && dragFrom !== index;
+              return <div
+                key={ex.id}
+                data-logger-exercise-index={index}
+                data-testid={`row-logger-exercise-${index}`}
+                className={`flex min-h-12 items-center gap-1 rounded-xl border px-1 transition-colors ${isActive ? "border-[hsl(var(--primary))]/50 bg-[hsl(var(--accent))]" : "border-[hsl(var(--border))] bg-[hsl(var(--card))]"} ${isDragging ? "opacity-55" : ""} ${isDropTarget ? "border-t-2 border-t-[hsl(var(--primary))]" : ""}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setActive(index)}
+                  aria-current={isActive ? "true" : undefined}
+                  className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left"
+                  data-testid={`button-select-logger-exercise-${index}`}
+                >
+                  <span className="min-w-0 truncate text-sm font-semibold">{ex.name}</span>
+                  <span className="mono shrink-0 text-[10px] text-[hsl(var(--muted-foreground))]">{ex.sets.length}{plannedCount ? ` / ${plannedCount}` : ""} sets</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={draft.exercises.length < 2}
+                  onPointerDown={(event) => beginExerciseReorder(event, index)}
+                  onContextMenu={(event) => event.preventDefault()}
+                  aria-label={`Hold and drag to reorder ${ex.name}, position ${index + 1}`}
+                  title="Press and hold, then drag to reorder"
+                  className="inline-flex h-11 w-10 shrink-0 touch-none select-none items-center justify-center rounded-lg text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] disabled:opacity-35"
+                  data-testid={`button-reorder-logger-exercise-${ex.id}`}
+                ><GripVertical size={17}/></button>
+              </div>;
+            })}
+            </div>
+          </div>
+          <p className="sr-only" role="status" aria-live="polite" data-testid="text-exercise-reorder-status">{reorderStatus}</p>
           {active && <>
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -254,9 +382,9 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
             <form onSubmit={submit} className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-3 sm:p-4" data-testid="form-log-set">
               <div className="mb-3 flex items-center justify-between"><p className="mono text-[10px] uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Current set</p><span className="mono rounded-md bg-[hsl(var(--muted))] px-2 py-1 text-[10px]" data-testid="text-current-set-number">{String(active.sets.length + 1).padStart(2, "0")}</span></div>
               <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                <div><label className={labelClass} htmlFor="set-weight">Load · {unit}</label><input id="set-weight" className={`${fieldClass} min-h-12 text-base`} type="number" min="0" step="any" inputMode="decimal" value={f.weight} onChange={(e) => update({ weight: e.target.value, kg: undefined })} data-testid="input-set-weight"/></div>
-                <div><label className={labelClass} htmlFor="set-reps">Reps</label><input id="set-reps" className={`${fieldClass} min-h-12 text-base`} type="number" min="1" max="100" inputMode="numeric" value={f.reps} onChange={(e) => update({ reps: e.target.value })} data-testid="input-set-reps"/></div>
-                <div><label className={labelClass} htmlFor="set-rir">RIR <span className="font-normal">(optional)</span></label><input id="set-rir" className={`${fieldClass} min-h-12 text-base`} type="number" min="0" max="10" step="any" inputMode="decimal" value={f.rir} onChange={(e) => update({ rir: e.target.value })} placeholder="—" data-testid="input-set-rir"/></div>
+                <div><label className={labelClass} htmlFor="set-weight">Load · {unit}</label><SwipeAdjustInput id="set-weight" className={`${fieldClass} min-h-12 text-base`} min={0} adjustmentStep={unit === "kg" ? 0.5 : 1} precision={unit === "kg" ? 1 : 0} inputMode="decimal" value={f.weight} onValueChange={(weight) => update({ weight, kg: undefined })} testId="input-set-weight"/></div>
+                <div><label className={labelClass} htmlFor="set-reps">Reps</label><SwipeAdjustInput id="set-reps" className={`${fieldClass} min-h-12 text-base`} min={1} max={100} adjustmentStep={1} precision={0} inputMode="numeric" value={f.reps} onValueChange={(reps) => update({ reps })} testId="input-set-reps"/></div>
+                <div><label className={labelClass} htmlFor="set-rir">RIR <span className="font-normal">(optional)</span></label><SwipeAdjustInput id="set-rir" className={`${fieldClass} min-h-12 text-base`} min={0} max={10} adjustmentStep={0.5} precision={1} inputMode="decimal" value={f.rir} onValueChange={(rir) => update({ rir })} placeholder="—" testId="input-set-rir"/></div>
               </div>
               {error && <p role="alert" className="mt-2 text-xs text-[hsl(0_90%_75%)]" data-testid="text-set-error">{error}</p>}
               <button type="submit" disabled={!f.reps || Number(f.reps) < 1} className={`${primaryBtn} mt-3 min-h-12 w-full`} data-testid="button-log-set"><Plus size={16}/>Log {f.kind === "warmup" ? "warm-up" : "work"} set {active.sets.length + 1}</button>

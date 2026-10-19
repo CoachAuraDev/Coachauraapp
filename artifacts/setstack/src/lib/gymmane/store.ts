@@ -45,6 +45,7 @@ type FloorState = {
   discardDraft: () => void;
   setActive: (index: number) => void;
   addDraftExercise: (exercise: CatalogExercise) => void;
+  moveDraftExercise: (fromIndex: number, toIndex: number) => void;
   removeDraftExercise: (index: number) => void;
   logSet: (set: Omit<SetLog, "id">) => void;
   setDraftEntry: (exerciseId: string, entry: DraftEntry) => void;
@@ -269,6 +270,21 @@ export const useFloor = create<FloorState>()(
         set({
           draft: { ...draft, exercises: [...draft.exercises, next], activeIndex: draft.exercises.length },
         });
+      },
+      moveDraftExercise: (fromIndex, toIndex) => {
+        const draft = get().draft;
+        if (!draft || fromIndex === toIndex
+          || fromIndex < 0 || fromIndex >= draft.exercises.length
+          || toIndex < 0 || toIndex >= draft.exercises.length) return;
+        const activeId = draft.exercises[draft.activeIndex]?.id;
+        const exercises = [...draft.exercises];
+        const [moved] = exercises.splice(fromIndex, 1);
+        if (!moved) return;
+        exercises.splice(toIndex, 0, moved);
+        const activeIndex = activeId
+          ? exercises.findIndex((exercise) => exercise.id === activeId)
+          : Math.max(0, Math.min(draft.activeIndex, exercises.length - 1));
+        set({ draft: { ...draft, exercises, activeIndex } });
       },
       removeDraftExercise: (index) => {
         const draft = get().draft;

@@ -121,6 +121,57 @@ test("draft guard preserves logged and pending sets; restart restores entries, t
   } finally { useFloor.persist.setOptions({ storage: priorStorage }); }
 });
 
+test("reordering live exercises preserves the active exercise, all set/input data and rest timer", () => {
+  const c = client("A");
+  c.routines = [routine()];
+  const s = reset([c]);
+  s.startSession("A", c.routines[0]!.id);
+  s.logSet(entry("row-set", 35, 10));
+  s.setDraftEntry(row.id, {
+    weightKg: 37.5,
+    reps: 9,
+    rir: 2,
+    kind: "normal",
+    inputs: { weight: "37.5", reps: "9", rir: "2", unit: "kg" },
+  });
+  s.setActive(1);
+  s.logSet(entry("bench-set", 55, 8));
+  s.setDraftEntry(bench.id, {
+    weightKg: 57.5,
+    reps: 7,
+    rir: 1,
+    kind: "normal",
+    inputs: { weight: "57.5", reps: "7", rir: "1", unit: "kg" },
+  });
+  s.configureRest(73, true, true);
+  s.startRest();
+
+  const before = structuredClone(useFloor.getState().draft!);
+  s.moveDraftExercise(1, 0);
+  const after = useFloor.getState().draft!;
+
+  assert.deepEqual(after.exercises.map((exercise) => exercise.id), [bench.id, row.id]);
+  assert.equal(after.activeIndex, 0);
+  assert.equal(after.exercises[after.activeIndex]!.id, before.exercises[before.activeIndex]!.id,
+    "the same active exercise remains selected after reordering");
+  assert.deepEqual(
+    Object.fromEntries(after.exercises.map((exercise) => [exercise.id, exercise.sets])),
+    Object.fromEntries(before.exercises.map((exercise) => [exercise.id, exercise.sets])),
+  );
+  assert.deepEqual(after.entries, before.entries, "unfinished numeric input remains associated with its exercise");
+  assert.equal(after.restUntil, before.restUntil);
+  assert.equal(after.restDurationSeconds, before.restDurationSeconds);
+  assert.equal(after.restPausedSeconds, before.restPausedSeconds);
+  assert.equal(after.timerSound, before.timerSound);
+  assert.equal(after.timerVibration, before.timerVibration);
+
+  const unchanged = structuredClone(after);
+  s.moveDraftExercise(-1, 0);
+  s.moveDraftExercise(0, 99);
+  s.moveDraftExercise(0, 0);
+  assert.deepEqual(useFloor.getState().draft, unchanged, "invalid and no-op moves do not mutate the active workout");
+});
+
 test("logged and pending loads stay exact across unit changes and draft rehydration", async () => {
   const s = reset();
   s.startSession("A", null);
