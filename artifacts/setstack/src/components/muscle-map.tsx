@@ -1,8 +1,9 @@
 import { useMemo, useState, type KeyboardEvent } from "react";
 import { useFloor } from "@/lib/gymmane/store";
-import { MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
+import { mapExerciseMuscles, MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
 import { coachAuraWorkloadColor, workloadLegendForAppearance } from "@/lib/gymmane/muscle-intensity-colors";
 import type { MuscleActivity, MuscleGroup, MuscleIntensity, MuscleView } from "@/lib/gymmane/muscle-activity";
+import type { CatalogExercise } from "@/lib/gymmane/catalog";
 
 const INTENSITY_LABEL: Record<MuscleIntensity, string> = {
   none: "No recorded work",
@@ -69,6 +70,75 @@ const UNDERLAY: Partial<Record<MuscleView, Partial<Record<MuscleGroup, string>>>
 };
 
 const MIRROR = "translate(200 0) scale(-1 1)";
+
+/** Compact, illustrative target map for an exercise (not a muscle-activation measurement). */
+export function ExerciseMuscleIllustration({
+  exercise,
+  size = "compact",
+}: {
+  exercise: CatalogExercise;
+  size?: "compact" | "regular";
+}) {
+  const mapping = mapExerciseMuscles(exercise);
+  const secondary = new Set(mapping.secondary);
+  const targets = [
+    ...(mapping.primary ? [`Primary: ${MUSCLE_GROUPS.find((group) => group.id === mapping.primary)?.label ?? mapping.primary}`] : []),
+    ...mapping.secondary.map((id) => `Secondary: ${MUSCLE_GROUPS.find((group) => group.id === id)?.label ?? id}`),
+  ];
+  const dimensions = size === "regular" ? "h-[6.25rem] w-[6.75rem]" : "h-20 w-[5.25rem]";
+
+  return (
+    <span
+      role="img"
+      aria-label={targets.length ? `${targets.join(". ")}. Illustrative target map; not a muscle activation measurement.` : "No reliable muscle mapping; neutral body illustration."}
+      title={targets.length ? targets.join(" · ") : "No reliable muscle mapping"}
+      className={`inline-flex shrink-0 items-center justify-center gap-0.5 ${dimensions}`}
+      data-testid={`exercise-map-${exercise.id}`}
+      data-primary-muscle={mapping.primary ?? "unmapped"}
+      data-secondary-muscles={mapping.secondary.join(",")}
+    >
+      {(["front", "back"] as const).map((view) => (
+        <svg
+          key={view}
+          viewBox="0 0 200 400"
+          className={`h-full w-1/2 ${size === "regular" ? "max-w-[3.25rem]" : "max-w-10"}`}
+          aria-hidden="true"
+          data-view={view}
+        >
+          <g fill="var(--muscle-map-body)" stroke="var(--muscle-map-body-border)" strokeWidth="1">
+            {BODY_BASE[view].map((path, index) => (
+              <g key={index}><path d={path} /><path d={path} transform={MIRROR} /></g>
+            ))}
+            <ellipse cx="100" cy="31" rx="16" ry="18" />
+          </g>
+          {Object.entries(SHAPES[view]).map(([rawId, paths]) => {
+            const id = rawId as MuscleGroup;
+            const role = id === mapping.primary ? "primary" : secondary.has(id) ? "secondary" : null;
+            if (!role) return null;
+            return (
+              <g
+                key={id}
+                className={`exercise-muscle-region exercise-muscle-${role}`}
+                fill="var(--primary)"
+                fillOpacity={role === "primary" ? 0.92 : 0.54}
+                stroke="var(--muscle-map-background)"
+                strokeWidth="0.8"
+                strokeLinejoin="round"
+                data-muscle={id}
+                data-role={role}
+                data-testid={`exercise-map-${exercise.id}-${id}-${role}`}
+              >
+                {paths.map((path, index) => (
+                  <g key={index}><path d={path} /><path d={path} transform={MIRROR} /></g>
+                ))}
+              </g>
+            );
+          })}
+        </svg>
+      ))}
+    </span>
+  );
+}
 
 export function MuscleMap({
   muscles,

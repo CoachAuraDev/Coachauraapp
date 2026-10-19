@@ -1,0 +1,97 @@
+CoachAura: Animated Exercise Muscle Heat Maps
+
+Implement a lightweight animated muscle heat map for every exercise in CoachAura.
+
+Objective
+
+Each exercise should display a small anatomical muscle illustration showing the primary muscles targeted by that exercise. The targeted muscles should glow and pulse subtly in CoachAura's existing lime-green branding.
+
+The result should feel modern, minimal, premium, and intuitive, similar in polish to GymMane, while maintaining CoachAura's own identity.
+
+1. Exercise illustrations
+
+- Display a small anatomical illustration beside each exercise name in the exercise library, workout builder, and relevant exercise detail screens.
+- Use front-facing and back-facing anatomical silhouettes as appropriate.
+- Highlight the correct muscles for each exercise.
+- Examples:
+  - Bench press: pectorals.
+  - Incline bench press: upper pectorals.
+  - Lat pulldown: latissimus dorsi.
+  - Seated cable row: mid-back and lats.
+  - Biceps curl: biceps.
+  - Triceps pushdown: triceps.
+  - Lateral raise: lateral deltoids.
+  - Squat: quadriceps and glutes.
+  - Romanian deadlift: hamstrings, glutes, and lower back as secondary musculature.
+  - Calf raise: calves.
+  - Abdominal crunch: abdominal muscles.
+- Show secondary muscles with a less intense highlight than primary muscles.
+
+2. Animation style
+
+- Use a dark background with neutral grey anatomical silhouettes.
+- Use CoachAura's existing lime-green accent color for the highlighted muscles.
+- Add a soft glow and gentle pulsing effect to the targeted muscles.
+- Use a seamless loop lasting approximately 2–3 seconds.
+- Keep the animation subtle and professional rather than flashy.
+- The animation should communicate the targeted muscle group, not simulate a scientifically accurate measurement of muscle activation.
+
+3. Size and placement
+
+- Target approximately 80–120 px for illustrations in exercise lists, adapting to existing layouts.
+- Allow a larger illustration on the exercise detail screen.
+- Keep the exercise name, sets, reps, weights, and existing controls easy to read.
+- Avoid adding unnecessary cards, large blank areas, or additional interface clutter.
+- Do not allow animations to cover buttons, inputs, or workout controls.
+
+4. Cover the existing exercise library
+
+CoachAura has an exercise library containing more than 470 exercises.
+
+- Map each exercise to its primary and secondary muscle groups.
+- Reuse a common anatomical illustration wherever possible, highlighting different regions for different exercises.
+- Use the exercise's existing muscle-group metadata if available.
+- Do not invent inaccurate muscle mappings.
+- Provide a neutral anatomical fallback if an exercise has no reliable mapping.
+- Do not manually create hundreds of separate animations if reusable illustrations can achieve the same result.
+
+5. Technical implementation
+
+First inspect the existing codebase, framework, exercise data model, and UI components.
+
+Choose the most lightweight implementation compatible with the existing Android app. Prefer reusable SVG-based illustrations with CSS-style animations or another approach already supported by the project. Avoid adding a heavy dependency without a clear reason.
+
+Requirements:
+
+- Smooth animation on typical Android devices.
+- Minimal battery and memory consumption.
+- No network requests required to display the illustrations.
+- No interference with offline functionality.
+- Animations must not block scrolling, exercise selection, or workout logging.
+- Respect Android's reduced-motion or accessibility settings where supported.
+- Keep the illustrations consistent across the app.
+
+6. Preserve existing functionality
+
+Do not rebuild the app or redesign unrelated screens.
+
+Preserve:
+
+- CoachAura's existing lime-green default theme.
+- Existing optional themes and theme settings.
+- Client profiles and workout history.
+- Exercise selection, sets, reps, and weight entry.
+- Rest timers and live workout logging.
+- Existing navigation and local data storage.
+
+7. Implementation process
+
+1. Inspect the current project and identify the appropriate exercise-list and exercise-detail components.
+2. Determine how exercises and muscle-group metadata are currently stored.
+3. Build one high-quality prototype for the bench press.
+4. Verify the illustration, glow, animation, sizing, and performance.
+5. Extend the reusable system across the exercise library using accurate muscle mappings.
+6. Test exercise selection, live workout logging, scrolling, and offline use.
+7. Report which files were changed, how the animations work, and any remaining limitations.
+
+Important: Implement the feature in the existing project rather than simply describing how it could be built. Keep CoachAura's current visual identity and avoid unrelated changes.

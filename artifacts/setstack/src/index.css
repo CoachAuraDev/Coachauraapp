@@ -184,6 +184,8 @@
   --status-recovered-background: hsl(84 80% 62% / .14);
   --status-recovered-foreground: hsl(84 80% 72%);
 
+  /* Exercise target illustrations use the active theme accent and respect reduced motion. */
+
   /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
 
   /* Fallback for older browsers */
