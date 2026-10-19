@@ -511,7 +511,7 @@ async function verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient) {
   ), "Every visible muscle region should show no recorded workload");
   assert.equal(after.selected.totalSets, "0", "The selected muscle should have zero working sets");
   assert.equal(after.selected.directIndirect, "0 / 0", "The selected muscle should have zero direct and indirect sets");
-  assert.equal(after.selected.weightedSets, "0.00", "The selected muscle should have zero weighted sets");
+  assert.equal(after.selected.weightedSets, "0.000", "The selected muscle should have zero weighted sets");
   assert.equal(after.selected.weeklyLoad, "0.00", "The selected muscle should have zero weekly-equivalent workload");
   assert.equal(afterDetails.contributorRows, 0, "The selected muscle should have no contributor rows");
   assert.equal(after.selected.intensity, "none");
@@ -826,7 +826,7 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients, debugPor
       Number(initial.selected.totalSets) + directDelta + indirectDelta,
       `${muscle}: involved-set count should reflect the new contribution`);
     assert.equal(actual.selected.weightedSets,
-      (Number(initial.selected.weightedSets) + weightedDelta).toFixed(2),
+      (Number(initial.selected.weightedSets) + weightedDelta).toFixed(3),
       `${muscle}: weighted workload should reflect the new set's effort factor`);
     assert.equal(actual.selected.weeklyLoad,
       (Number(initial.selected.weeklyLoad) + weightedDelta).toFixed(2),
@@ -1141,7 +1141,7 @@ async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
         `${muscle}: exact direct / indirect sets after ${correction}`);
       assert.equal(Number(actual.selected.totalSets), Number(initial.selected.totalSets) - direct - indirect,
         `${muscle}: exact involved sets after ${correction}`);
-      assert.equal(actual.selected.weightedSets, (Number(initial.selected.weightedSets) - weighted).toFixed(2),
+      assert.equal(actual.selected.weightedSets, (Number(initial.selected.weightedSets) - weighted).toFixed(3),
         `${muscle}: exact weighted sets after ${correction}`);
       assert.equal(actual.selected.weeklyLoad, (Number(initial.selected.weeklyLoad) - weighted).toFixed(2),
         `${muscle}: exact 7-day weekly-equivalent load after ${correction}`);
@@ -1154,6 +1154,165 @@ async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
     assert.deepEqual(await snapshot("seed-amina"), after, "Corrected muscle totals must survive reload");
     assert.deepEqual(await snapshot("seed-leo"), leoBefore, "Another client's chart must stay unchanged after reload");
   }
+}
+
+async function correctSharedMuscleContributorsAndVerifyCharts(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const today = todayIso();
+  const ownerId = "test-shared-muscle-contributors";
+  const fixtureClient = structuredClone(seedClients(today).find((client) => client.id === "seed-amina"));
+  fixtureClient.id = ownerId;
+  fixtureClient.name = "Shared muscle contributors fixture";
+  fixtureClient.sessions = [structuredClone(fixtureClient.sessions[0])];
+  const session = fixtureClient.sessions[0];
+  session.id = `${ownerId}-session`;
+  session.date = today;
+
+  const bench = session.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  const dumbbellCatalogExercise = kExercises.find((exercise) => exercise.name === "Dumbbell Bench Press");
+  assert.ok(bench, "The saved workout should contain a barbell bench press");
+  assert.ok(dumbbellCatalogExercise, "The exercise library should contain a dumbbell bench press");
+  const dumbbellBench = {
+    id: dumbbellCatalogExercise.id,
+    name: dumbbellCatalogExercise.name,
+    primary: dumbbellCatalogExercise.primary,
+    equipment: dumbbellCatalogExercise.equipment,
+    sets: structuredClone(bench.sets).map((set, index) => ({
+      ...set,
+      id: `${ownerId}-dumbbell-set-${index + 1}`,
+      rpe: index === 0 ? 9 : 6,
+    })),
+  };
+  session.exercises.push(dumbbellBench);
+
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    data.state.clients = data.state.clients.filter((client) => client.id !== ${JSON.stringify(ownerId)});
+    data.state.clients.push(${JSON.stringify(fixtureClient)});
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  await reloadAndWait(page, "multiple exercises contributing to the same muscle", "dashboard-muscle-activity");
+
+  const snapshot = async () => ({
+    chest: await muscleChartSnapshot(page, baseUrl, ownerId, "chest"),
+    triceps: await muscleChartSnapshot(page, baseUrl, ownerId, "triceps"),
+  });
+  const contributorsByExercise = (muscle) => Object.fromEntries(
+    muscle.selected.contributors.map((contributor) => [
+      contributor.exerciseId,
+      parseContributorDetails(contributor),
+    ]),
+  );
+  const assertContributorTotals = (charts, label) => {
+    for (const [muscleName, chart] of Object.entries(charts)) {
+      const contributions = chart.selected.contributors.map(parseContributorDetails);
+      const [panelDirect, panelIndirect] = chart.selected.directIndirect.split(" / ").map(Number);
+      assert.equal(contributions.reduce((sum, item) => sum + item.directSets, 0), panelDirect,
+        `${label}: ${muscleName} contributor direct sets should sum to the panel`);
+      assert.equal(contributions.reduce((sum, item) => sum + item.indirectSets, 0), panelIndirect,
+        `${label}: ${muscleName} contributor indirect sets should sum to the panel`);
+      assert.equal(
+        contributions.reduce((sum, item) => sum + item.weightedSets, 0).toFixed(3),
+        chart.selected.weightedSets,
+        `${label}: ${muscleName} contributor weighted sets should sum to the panel`,
+      );
+    }
+  };
+  const before = await snapshot();
+  const initialChest = contributorsByExercise(before.chest);
+  const initialTriceps = contributorsByExercise(before.triceps);
+  assert.deepEqual(initialChest[bench.id], { directSets: 2, indirectSets: 0, weightedSets: 2 },
+    "The barbell press should have its own direct chest contribution");
+  assert.deepEqual(initialChest[dumbbellBench.id], { directSets: 2, indirectSets: 0, weightedSets: 2 },
+    "The dumbbell press should have its own direct chest contribution");
+  assert.deepEqual(initialTriceps[bench.id], { directSets: 0, indirectSets: 2, weightedSets: 1 },
+    "The barbell press should have its own indirect triceps contribution");
+  assert.deepEqual(initialTriceps[dumbbellBench.id], { directSets: 0, indirectSets: 2, weightedSets: 1 },
+    "The dumbbell press should have its own indirect triceps contribution");
+  assertContributorTotals(before, "Initial workout");
+
+  const expectedClients = structuredClone(beforeState.clients.filter((client) => client.id !== ownerId));
+  expectedClients.push(structuredClone(fixtureClient));
+  const expectedSession = expectedClients.find((client) => client.id === ownerId)
+    .sessions.find((item) => item.id === session.id);
+  const expectedBench = expectedSession.exercises.find((exercise) => exercise.id === bench.id);
+  const expectedDumbbellBench = expectedSession.exercises.find((exercise) => exercise.id === dumbbellBench.id);
+
+  // Adjust the barbell press effort. The dumbbell press must remain unchanged.
+  expectedBench.sets[0].rpe = 9;
+  await openSavedSessionEditor(page, baseUrl, session.id, ownerId);
+  const benchExpanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(benchExpanded, true, "Expand the barbell press effort inputs");
+  await waitFor("barbell press editor to expand", () => page.evaluate(
+    `document.querySelector('[data-testid="editor-exercise-${bench.id}"] button[aria-expanded]')?.getAttribute("aria-expanded") === "true"`,
+  ));
+  await page.fill(`input-editor-rir-${bench.sets[0].id}`, "1");
+  await page.click("button-editor-save");
+  await waitFor("saved barbell press effort correction", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "Changing barbell press effort must persist only that set's correction");
+
+  const afterEffort = await snapshot();
+  const effortChest = contributorsByExercise(afterEffort.chest);
+  const effortTriceps = contributorsByExercise(afterEffort.triceps);
+  assert.deepEqual(effortChest[dumbbellBench.id], initialChest[dumbbellBench.id],
+    "Changing barbell press effort must not change the dumbbell press chest row");
+  assert.deepEqual(effortTriceps[dumbbellBench.id], initialTriceps[dumbbellBench.id],
+    "Changing barbell press effort must not change the dumbbell press triceps row");
+  assert.deepEqual(effortChest[bench.id], { directSets: 2, indirectSets: 0, weightedSets: 2.25 },
+    "Only the barbell press chest weighted contribution should follow its corrected effort");
+  assert.deepEqual(effortTriceps[bench.id], { directSets: 0, indirectSets: 2, weightedSets: 1.125 },
+    "Only the barbell press triceps weighted contribution should follow its corrected effort");
+  assertContributorTotals(afterEffort, "After barbell effort correction");
+
+  // Remove one dumbbell set. The corrected barbell rows must remain unchanged.
+  expectedDumbbellBench.sets.shift();
+  await openSavedSessionEditor(page, baseUrl, session.id, ownerId);
+  const dumbbellExpanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${dumbbellBench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(dumbbellExpanded, true, "Expand the dumbbell press saved sets");
+  await waitFor("dumbbell press editor to expand", () => page.evaluate(
+    `document.querySelector('[data-testid="editor-exercise-${dumbbellBench.id}"] button[aria-expanded]')?.getAttribute("aria-expanded") === "true"`,
+  ));
+  await page.click(`button-editor-remove-set-${dumbbellBench.sets[0].id}`);
+  await page.click("button-editor-save");
+  await waitFor("saved dumbbell press set removal", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "Removing a dumbbell press set must persist only that exercise's set change");
+
+  const afterSetRemoval = await snapshot();
+  const removalChest = contributorsByExercise(afterSetRemoval.chest);
+  const removalTriceps = contributorsByExercise(afterSetRemoval.triceps);
+  assert.deepEqual(removalChest[bench.id], effortChest[bench.id],
+    "Removing a dumbbell set must not change the corrected barbell chest row");
+  assert.deepEqual(removalTriceps[bench.id], effortTriceps[bench.id],
+    "Removing a dumbbell set must not change the corrected barbell triceps row");
+  assert.deepEqual(removalChest[dumbbellBench.id], { directSets: 1, indirectSets: 0, weightedSets: 0.75 },
+    "The dumbbell chest row should retain only its remaining set and effort");
+  assert.deepEqual(removalTriceps[dumbbellBench.id], { directSets: 0, indirectSets: 1, weightedSets: 0.375 },
+    "The dumbbell triceps row should retain only its remaining indirect set");
+  assertContributorTotals(afterSetRemoval, "After dumbbell set removal");
+
+  await reloadAndWait(page, "reloaded shared-muscle contributor dashboard", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "Both saved-set edits must remain in the completed workout after reload");
+  const afterReload = await snapshot();
+  assert.deepEqual(afterReload, afterSetRemoval,
+    "Per-exercise direct, indirect, and weighted contributions must persist after reload");
+  assertContributorTotals(afterReload, "After reload");
 }
 
 async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
@@ -1251,7 +1410,7 @@ async function correctSavedEffortAndVerifyCharts(page, baseUrl) {
       assert.equal(actual.selected.directIndirect, initial.selected.directIndirect,
         `${muscle}: direct and indirect set counts must not change after editing RIR`);
       assert.equal(actual.selected.weightedSets,
-        (Number(initial.selected.weightedSets) + delta).toFixed(2),
+        (Number(initial.selected.weightedSets) + delta).toFixed(3),
         `${muscle}: weighted sets must follow the exact effort factor`);
       assert.equal(actual.selected.weeklyLoad,
         (Number(initial.selected.weeklyLoad) + delta * 7 / 30).toFixed(2),
@@ -1739,7 +1898,7 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
       `${description}: restore exactly the bench press's chest set count`);
     assert.equal(restored.selected.directIndirect, `${direct + bench.sets.length} / ${indirect}`,
       `${description}: restore exactly the bench press's direct chest sets`);
-    assert.equal(restored.selected.weightedSets, expectedWeighted.toFixed(2),
+    assert.equal(restored.selected.weightedSets, expectedWeighted.toFixed(3),
       `${description}: restore the exact effort-weighted chest sets`);
     assert.equal(restored.selected.weeklyLoad, (expectedWeighted * 7 / period).toFixed(2),
       `${description}: restore the exact ${period}-day weekly-equivalent chest workload`);
@@ -1776,7 +1935,7 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
       assert.equal(after30.selected.directIndirect, `${direct - bench.sets.length} / ${indirect}`,
         "The selected chest details must exclude the corrected session's direct sets");
       assert.equal(Number(after30.selected.totalSets), Number(before.totalSets) - bench.sets.length);
-      assert.equal(after30.selected.weightedSets, weightedSets.toFixed(2));
+      assert.equal(after30.selected.weightedSets, weightedSets.toFixed(3));
       assert.equal(after30.selected.weeklyLoad, weeklyLoad.toFixed(2),
         "The remaining workload must use the 30-day weekly-equivalent scale");
       const [intensity, label] = weeklyLoad <= 0 ? ["none", "No recorded work"]
@@ -1909,7 +2068,7 @@ async function correctSavedSessionAndVerifyCharts(page, baseUrl) {
     assert.equal(after.selected.directIndirect, `${direct - bench.sets.length} / ${indirect}`,
       `The ${period}-day chest breakdown must exclude the future workout's direct sets`);
     const weighted = Number(before.selected.weightedSets) - benchWeightedSets;
-    assert.equal(after.selected.weightedSets, weighted.toFixed(2),
+    assert.equal(after.selected.weightedSets, weighted.toFixed(3),
       `The ${period}-day chest workload must exclude the future workout's effort-weighted sets`);
     assert.equal(after.selected.weeklyLoad, (weighted * 7 / period).toFixed(2),
       `The ${period}-day muscle-map workload must exclude the future workout's contribution`);
@@ -2210,8 +2369,8 @@ async function verifyCustomExerciseMuscleContributors(page, baseUrl, fixtureClie
       [...expected].sort(),
       `${description}: the exercise should appear only in its configured primary and secondary panels`,
     );
-    assert.equal(panels[expectedPrimary], "1 direct · 0 indirect sets · 1.00 weighted");
-    assert.equal(panels[expectedSecondary], "0 direct · 1 indirect sets · 0.50 weighted");
+    assert.equal(panels[expectedPrimary], "1 direct · 0 indirect sets · 1.000 weighted");
+    assert.equal(panels[expectedSecondary], "0 direct · 1 indirect sets · 0.500 weighted");
   }
 
   try {
@@ -2637,6 +2796,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Out-of-range and non-finite RIR corrections are rejected without changing storage or charts");
   await correctSavedSetsAndVerifyCharts(page, baseUrl);
   t.diagnostic("Saved-set corrections verified; checking seven-day and 30-day date boundaries");
+  await correctSharedMuscleContributorsAndVerifyCharts(page, baseUrl);
+  t.diagnostic("Shared-muscle exercise rows retain independent set and effort contributions across edits and reloads");
   await correctSavedSessionAndVerifyCharts(page, baseUrl);
   t.diagnostic("Date boundaries, client isolation, and reload persistence verified");
   const fixtureClient = structuredClone(initialClients.find((item) => item.id === "seed-amina"));

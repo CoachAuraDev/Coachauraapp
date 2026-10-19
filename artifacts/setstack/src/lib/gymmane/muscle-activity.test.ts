@@ -12,6 +12,7 @@ import type { Client, ExerciseLog, SessionLog, SetLog } from "./models.ts";
 
 const today = "2025-03-30";
 const bench = kExercises.find((exercise) => exercise.name === "Barbell Bench Press")!;
+const dumbbellBench = kExercises.find((exercise) => exercise.name === "Dumbbell Bench Press")!;
 const barbellRow = kExercises.find((exercise) => exercise.name === "Barbell Bent Over Row")!;
 const fixtureExercise: CatalogExercise = {
   id: "test-leg-extension",
@@ -147,6 +148,46 @@ test("secondary muscles receive half set-equivalents while raw sets remain separ
   assert.equal(triceps.indirectSets, 1);
   assert.equal(triceps.effectiveSetEquivalents, 0.625);
   assert.equal(triceps.contributors[0]?.exerciseName, "Barbell Bench Press");
+});
+
+test("contributors merge repeated exercises across sessions without combining different lifts", () => {
+  const sessions = [
+    session("press-day-one", "2025-03-29", [
+      logExercise(bench, [set("bench-day-one", "normal", 9)]),
+      logExercise(dumbbellBench, [set("dumbbell-day-one", "normal", 6)]),
+    ]),
+    session("press-day-two", today, [
+      logExercise(bench, [set("bench-day-two", "normal", 8)]),
+      logExercise(dumbbellBench, [set("dumbbell-day-two", "normal", 8)]),
+    ]),
+  ];
+
+  const chest = getMuscle(sessions, 30, "chest");
+  const triceps = getMuscle(sessions, 30, "triceps");
+  const byExercise = (muscle: typeof chest) => Object.fromEntries(
+    muscle.contributors.map((item) => [item.exerciseId, {
+      directSets: item.directSets,
+      indirectSets: item.indirectSets,
+      weightedSets: item.effectiveSetEquivalents,
+    }]),
+  );
+
+  assert.deepEqual(byExercise(chest), {
+    [bench.id]: { directSets: 2, indirectSets: 0, weightedSets: 2.25 },
+    [dumbbellBench.id]: { directSets: 2, indirectSets: 0, weightedSets: 1.75 },
+  });
+  assert.deepEqual(byExercise(triceps), {
+    [bench.id]: { directSets: 0, indirectSets: 2, weightedSets: 1.125 },
+    [dumbbellBench.id]: { directSets: 0, indirectSets: 2, weightedSets: 0.875 },
+  });
+  for (const muscle of [chest, triceps]) {
+    assert.equal(muscle.contributors.reduce((sum, item) => sum + item.directSets, 0), muscle.directSets);
+    assert.equal(muscle.contributors.reduce((sum, item) => sum + item.indirectSets, 0), muscle.indirectSets);
+    assert.equal(
+      muscle.contributors.reduce((sum, item) => sum + item.effectiveSetEquivalents, 0),
+      muscle.effectiveSetEquivalents,
+    );
+  }
 });
 
 test("custom canonical muscle assignments are usable without changing session records", () => {

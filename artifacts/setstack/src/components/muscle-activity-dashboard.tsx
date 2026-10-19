@@ -120,7 +120,7 @@ export function MuscleActivityDashboard({
           <dl className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4">
             <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Working sets involving muscle</dt><dd className="mono mt-1 text-xl font-bold" data-testid="text-selected-total-sets">{selected.directSets + selected.indirectSets}</dd></div>
             <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Direct / indirect</dt><dd className="mono mt-1 text-xl font-bold" data-testid="text-selected-direct-indirect">{selected.directSets} / {selected.indirectSets}</dd></div>
-            <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Weighted sets · selected period</dt><dd className="mono mt-1 font-semibold" data-testid="text-selected-weighted-sets">{selected.effectiveSetEquivalents.toFixed(2)}</dd></div>
+            <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Weighted sets · selected period</dt><dd className="mono mt-1 font-semibold" data-testid="text-selected-weighted-sets">{selected.effectiveSetEquivalents.toFixed(3)}</dd></div>
             <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Weekly-equivalent load</dt><dd className="mono mt-1 font-semibold" data-testid="text-selected-weekly-load">{selected.weeklyEquivalent.toFixed(2)}</dd></div>
             <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Most recent working session</dt><dd className="mt-1 text-sm font-semibold" data-testid="text-selected-last-session">{selected.lastWorkoutDate ? `${shortDate(selected.lastWorkoutDate)} · ${selected.daysSinceLastWorkout === 0 ? "today" : `${selected.daysSinceLastWorkout} days ago`}` : "No recorded working sets"}</dd></div>
             <div><dt className="text-xs text-[hsl(var(--muted-foreground))]">Training frequency</dt><dd className="mt-1 text-sm font-semibold" data-testid="text-selected-frequency">{selected.recent7DaySessions} sessions / last 7 days<br/><span className="text-xs font-normal text-[hsl(var(--muted-foreground))]">{selected.selectedPeriodSessions} in selected period</span></dd></div>
@@ -128,7 +128,7 @@ export function MuscleActivityDashboard({
           <div className="mt-5 border-t border-[hsl(var(--border))] pt-4">
             <h4 className="text-sm font-semibold">Contributing exercises</h4>
             {selected.contributors.length > 0 ? <ul className="mt-2 divide-y divide-[hsl(var(--border))]">{selected.contributors.map((item) => <li key={item.exerciseId} className="py-3" data-testid={`row-muscle-contributor-${item.exerciseId}`}>
-              <p className="text-sm font-semibold">{item.exerciseName}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{item.directSets} direct · {item.indirectSets} indirect sets · {item.effectiveSetEquivalents.toFixed(2)} weighted</p>
+              <p className="text-sm font-semibold">{item.exerciseName}</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">{item.directSets} direct · {item.indirectSets} indirect sets · {item.effectiveSetEquivalents.toFixed(3)} weighted</p>
             </li>)}</ul> : <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">No working sets contributed to this muscle in the selected period.</p>}
           </div>
         </section>
