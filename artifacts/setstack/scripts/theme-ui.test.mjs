@@ -201,6 +201,39 @@ async function navigate(page, url, selector) {
   ), (state) => state?.found === true);
 }
 
+async function swipeAdjust(page, testId, direction) {
+  return page.evaluate(`(async () => {
+    const input = document.querySelector('[data-testid="${testId}"]');
+    if (!input) return null;
+    const rect = input.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const pointerId = 731;
+    input.dispatchEvent(new PointerEvent("pointerdown", {
+      bubbles: true, cancelable: true, pointerId, pointerType: "touch",
+      isPrimary: true, button: 0, clientX: x, clientY: y
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const heldScale = input.className.includes("scale-[1.035]");
+    input.dispatchEvent(new PointerEvent("pointermove", {
+      bubbles: true, cancelable: true, pointerId, pointerType: "touch",
+      isPrimary: true, button: 0, clientX: x + (${direction} * 50), clientY: y
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const result = {
+      heldScale,
+      value: input.value,
+      direction: input.getAttribute("data-adjust-direction"),
+      animations: input.getAnimations().filter((animation) => animation.playState !== "idle").length
+    };
+    input.dispatchEvent(new PointerEvent("pointerup", {
+      bubbles: true, cancelable: true, pointerId, pointerType: "touch",
+      isPrimary: true, button: 0, clientX: x + (${direction} * 50), clientY: y
+    }));
+    return result;
+  })()`);
+}
+
 async function reloadAndWait(page, description, selector) {
   const marker = `__coachaura_reloaded_${Date.now()}`;
   await page.send("Page.addScriptToEvaluateOnNewDocument", {
@@ -1740,6 +1773,23 @@ async function exerciseWorkout(page, baseUrl) {
     'document.querySelector(\'[data-testid="panel-workout-logger"]\') !== null',
   ));
   assert.ok(await page.evaluate('!!document.querySelector(\'[data-testid="panel-rest-timer"]\')'));
+  const currentUnit = (await storedState(page)).unit;
+  for (const control of [
+    { testId: "input-set-weight", step: currentUnit === "kg" ? 0.5 : 1 },
+    { testId: "input-set-reps", step: 1 },
+    { testId: "input-set-rir", step: 0.5 },
+  ]) {
+    const before = await page.evaluate(`Number(document.querySelector('[data-testid="${control.testId}"]')?.value || 0)`);
+    const increment = await swipeAdjust(page, control.testId, 1);
+    assert.ok(increment?.heldScale, `${control.testId} scales while held`);
+    assert.equal(increment?.direction, "increase", `${control.testId} signals an increase`);
+    assert.ok(increment?.animations, `${control.testId} animates the changed value`);
+    assert.equal(Number(increment?.value), before + control.step * 2,
+      `${control.testId} applies rapid consecutive right-swipe steps immediately`);
+    const decrement = await swipeAdjust(page, control.testId, -1);
+    assert.equal(decrement?.direction, "decrease", `${control.testId} signals a decrease`);
+    assert.equal(Number(decrement?.value), before, `${control.testId} applies left swipes without dropping steps`);
+  }
 
   await page.click("button-rest-settings");
   await page.fill("input-rest-seconds", "75", true);
@@ -1928,6 +1978,20 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
       localStorage.setItem("setstack-v1", ${JSON.stringify(fixture)});
     }`,
   });
+  await navigate(page, `${baseUrl}/`, "dashboard-columns");
+  const dashboardContent = await page.evaluate(`({
+    hasRecentActivity: Array.from(document.querySelectorAll("h2"))
+      .some((heading) => heading.textContent.trim() === "Recent activity"),
+    activityRows: document.querySelectorAll('[data-testid^="link-activity-"]').length,
+    clientRows: document.querySelectorAll('[data-testid^="link-client-seed-"]').length,
+    quickStart: !!document.querySelector('[data-testid="button-open-quick-start"]'),
+    overviewStats: !!document.querySelector('[data-testid="overview-stats"]')
+  })`);
+  assert.equal(dashboardContent.hasRecentActivity, false, "The dashboard should not render the Recent Activity section");
+  assert.equal(dashboardContent.activityRows, 0, "Recent activity rows should be removed from the dashboard");
+  assert.equal(dashboardContent.clientRows, initialClients.length, "Client shortcuts must remain visible");
+  assert.ok(dashboardContent.quickStart, "Quick workout actions must remain available");
+  assert.ok(dashboardContent.overviewStats, "Dashboard overview statistics must remain available");
   await navigate(page, `${baseUrl}/clients/${clientId}`, "button-client-start-session");
 
   for (let index = 0; index < appearances.length; index += 1) {

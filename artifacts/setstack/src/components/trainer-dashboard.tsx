@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Dumbbell, Library, Play, Plus, Scale, Search, Users, X, Zap, ChevronDown, ChevronRight, History } from "lucide-react";
+import { Library, Play, Plus, Search, Users, X, Zap, ChevronDown, History } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
 import { clientSummary } from "@/lib/gymmane/metrics";
-import { formatLoad, isoWeekday, shortDate, todayIso, WEEKDAYS } from "@/lib/gymmane/engine";
-import { recentActivity, weekOverview } from "@/lib/gymmane/dashboard";
+import { formatLoad, isoWeekday, todayIso, WEEKDAYS } from "@/lib/gymmane/engine";
+import { weekOverview } from "@/lib/gymmane/dashboard";
 import { MUSCLE_LABEL } from "@/lib/gymmane/metrics";
 import { registerNativeBackHandler } from "@/lib/native/back-handlers";
 import { BackupReminderCard, useBackupReminder } from "@/components/backup-reminder";
@@ -61,7 +61,6 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
   const today = todayIso();
   const wd = isoWeekday(today);
   const week = useMemo(() => weekOverview(clients, today), [clients, today]);
-  const activity = useMemo(() => recentActivity(clients, 5, today), [clients, today]);
   const rows = useMemo(() => clients.map((client) => ({ client, summary: clientSummary(client, today) })), [clients, today]);
   const query = search.trim().toLocaleLowerCase();
   const list = rows.filter(({ client, summary }) => (status === "all" || summary.status === status) && client.name.toLocaleLowerCase().includes(query));
@@ -141,7 +140,7 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
       <button className={quiet} onClick={() => setDlg("library")} data-testid="button-open-library"><Library size={16} />Exercises</button>
     </div>
 
-    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(310px,.8fr)]" data-testid="dashboard-columns">
+    <div className="grid grid-cols-1 gap-6" data-testid="dashboard-columns">
       <div>
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><h2 className="display-font text-xl font-semibold">Clients</h2>{clients.length > 0 && <div className="flex min-w-0 gap-2"><div className="relative min-w-0 flex-1 sm:flex-none"><Search className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 ${muted}`} size={15}/><input className={`${field} pl-9 pr-10 sm:w-48`} placeholder="Find a client" aria-label="Search clients" value={search} onChange={(e) => setSearch(e.target.value)} data-testid="input-search-athletes"/>{search && <button type="button" className="absolute right-1 top-1/2 inline-flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg hover:bg-[hsl(var(--muted))]" aria-label="Clear client search" onClick={() => setSearch("")} data-testid="button-clear-client-search"><X size={15}/></button>}</div><select className={`${field} w-auto shrink-0`} aria-label="Filter clients by status" value={status} onChange={(e) => setStatus(e.target.value)} data-testid="select-athlete-status"><option value="all">All</option><option value="on-floor">Recent</option><option value="due">4–7 days</option><option value="overdue">8+ days</option><option value="new">No workouts</option></select></div>}</div>
         <p className="sr-only" role="status" aria-live="polite">{clients.length ? `Showing ${list.length} of ${clients.length} clients` : "No clients yet"}</p>
@@ -156,12 +155,6 @@ export function TrainerDashboard({ onAddClient }: { onAddClient: () => void }) {
           {!list.length && <div className={`${card} p-6 text-center`}><Users className={`mx-auto ${muted}`} size={24} /><h3 className="mt-3 font-semibold">{clients.length ? "No clients match." : "No clients yet."}</h3><p className={`mt-1 text-sm ${muted}`}>{clients.length ? "Adjust the search or status filter." : "Use Add client above to create the first profile."}</p>{clients.length > 0 && hasFilters && <button type="button" className={`${quiet} mt-3`} onClick={clearFilters} data-testid="button-clear-client-filters">Clear filters</button>}</div>}
         </div>
       </div>
-      <section className={`${card} h-fit p-4`}><h2 className="display-font mb-3 text-xl font-semibold">Recent activity</h2>
-        {activity.length ? <div className="space-y-1">{activity.map((a, i) => <Link key={`${a.kind}-${i}-${a.date}`} href={a.kind === "workout" ? `/clients/${a.client.id}?tab=history` : `/clients/${a.client.id}`} className="flex min-h-11 items-center gap-3" data-testid={`link-activity-${i}`}>
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]">{a.kind === "workout" ? <Dumbbell size={15} /> : <Scale size={15} />}</span>
-          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold">{a.client.name} <span className={`font-normal ${muted}`}>· {a.kind === "workout" ? a.session.name : `Bodyweight ${formatLoad(a.kg, unit)}`}</span></span><span className={`mono text-[10px] ${muted}`}>{shortDate(a.date)}{a.kind === "workout" ? ` · ${a.session.exercises?.length ?? 0} exercises` : ""}</span></span><ChevronRight size={15} className={muted} /></Link>)}</div>
-          : <p className={`text-sm ${muted}`}>Completed workouts and bodyweight entries will appear here.</p>}
-      </section>
     </div>
     {dlg === "start" && <QuickStart onClose={() => setDlg(null)} onStart={(c, r) => { setDlg(null); start(c, r); }} hasDraft={!!draft} />}
     {dlg === "library" && <ExerciseLibrary onClose={() => setDlg(null)} />}
