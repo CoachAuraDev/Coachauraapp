@@ -63,6 +63,8 @@ export function recoveryColor(value: number) {
 function loggedAt(session: SessionLog): Date | null {
   if (/^\d{4}-\d{2}-\d{2}$/.test(session.date)) {
     const [y, m, d] = session.date.split("-").map(Number);
+    // Keep date-only logs anchored to local midnight so local calendar-day
+    // comparisons match the stored date in every device timezone.
     const date = new Date(y!, m! - 1, d!);
     return date.getFullYear() === y && date.getMonth() === m! - 1 && date.getDate() === d ? date : null;
   }

@@ -339,6 +339,8 @@ export function analyzeMuscleActivity(
   today: string,
 ): MuscleActivityResult {
   if (!isIsoDate(today)) throw new Error(`Expected today as YYYY-MM-DD, received "${today}"`);
+  // Date-only session values are compared as calendar strings; never parse
+  // them as UTC instants, which would shift their displayed day west of UTC.
   const startDate = new Date(Date.parse(`${today}T00:00:00Z`) - (period - 1) * 86_400_000)
     .toISOString()
     .slice(0, 10);

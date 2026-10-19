@@ -3,3 +3,15 @@ export function isValidCalendarDate(value: unknown): value is string {
   const parsed = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
+
+/** Formats a stored calendar date without converting it through the device's timezone. */
+export function formatCalendarDate(
+  value: string,
+  options: Intl.DateTimeFormatOptions,
+  locale?: string,
+): string {
+  return new Date(`${value}T00:00:00.000Z`).toLocaleDateString(locale, {
+    ...options,
+    timeZone: "UTC",
+  });
+}

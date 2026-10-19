@@ -18,6 +18,7 @@ import {
   YAxis,
 } from "recharts";
 import { Card } from "@/components/ui/card";
+import { formatCalendarDate } from "@/lib/gymmane/calendar-date";
 import { analyzeMuscleActivity, MUSCLE_GROUPS } from "@/lib/gymmane/muscle-activity";
 import {
   muscleBalanceRadar,
@@ -49,8 +50,7 @@ const tooltipStyle = {
 };
 
 function shortDate(date: string): string {
-  const parsed = new Date(`${date}T12:00:00`);
-  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return formatCalendarDate(date, { month: "short", day: "numeric" });
 }
 
 function targetInputValues(targets: Client["muscleTargets"] = {}): Record<MuscleTargetGroup, string> {
