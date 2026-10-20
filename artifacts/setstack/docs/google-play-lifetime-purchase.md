@@ -1,8 +1,8 @@
 # CoachAura lifetime purchase setup
 
 CoachAura uses Google Play Billing Library 9.1.0 and the one-time in-app product
-`coachaura_lifetime`. The app reads the localized price from Google Play; it does
-not hardcode the advertised 299 SEK price.
+`coachaura_lifetime`. The app reads the localized price from Google Play; the
+Swedish base price is intended to be configured as 499 SEK in Play Console.
 
 ## Google Play Console
 
@@ -13,7 +13,7 @@ not hardcode the advertised 299 SEK price.
    old listing's installations.
 2. In **Monetize with Play > Products > In-app products**, create a product with
    ID `coachaura_lifetime`. Use a one-time product, not a subscription. Add the
-   customer-facing title and description, set the initial SEK price to 299, and
+   customer-facing title and description, set the initial SEK price to 499, and
    activate the product. Add other regional prices as appropriate.
 3. In **Settings > License testing**, add the Google accounts that will test
    purchases. These accounts must also be enrolled in the relevant test track.

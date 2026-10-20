@@ -15,14 +15,16 @@ function fakeBridge({
   billingAvailable?: boolean;
 } = {}) {
   let owned = [...purchases];
+  let queryCount = 0;
   const bridge: PlayBillingBridge = {
     async getRuntime() { return { android: true, debugBuild }; },
     async getProductDetails() {
       return billingAvailable
-        ? { available: true, formattedPrice: "299 kr" }
+        ? { available: true, formattedPrice: "499 kr" }
         : { available: false, message: "Product unavailable in this test." };
     },
     async queryPurchases() {
+      queryCount += 1;
       return billingAvailable
         ? { available: true, purchases: owned }
         : { available: false, purchases: [], message: "Billing unavailable in this test." };
@@ -38,6 +40,7 @@ function fakeBridge({
   return {
     bridge,
     setOwned(next: PlayPurchaseRecord[]) { owned = [...next]; },
+    getQueryCount() { return queryCount; },
   };
 }
 
@@ -94,10 +97,30 @@ test("a later Play query can confirm a pending purchase", async () => {
   assert.equal(controller.hasLifetimeAccess(), true);
 });
 
+test("an acknowledgement retry warning does not trigger a purchase-query retry loop", async () => {
+  const fake = fakeBridge({ purchases: purchased });
+  const controller = new BillingController(fake.bridge, () => true);
+  await controller.refresh();
+  const queriesBeforeWarning = fake.getQueryCount();
+
+  await controller.handlePurchaseUpdate({ acknowledgement: "retry" });
+
+  assert.equal(fake.getQueryCount(), queriesBeforeWarning);
+  assert.equal(controller.hasLifetimeAccess(), true);
+  assert.match(controller.getSnapshot().message, /could not acknowledge/i);
+
+  const next = fakeBridge();
+  const nextController = new BillingController(next.bridge, () => true);
+  await nextController.refresh();
+  next.setOwned(purchased);
+  await nextController.handlePurchaseUpdate();
+  assert.equal(nextController.hasLifetimeAccess(), true);
+});
+
 test("price is sourced from Play product details and billing errors fail closed", async () => {
   const available = new BillingController(fakeBridge().bridge, () => true);
   await available.refresh();
-  assert.equal(available.getSnapshot().price, "299 kr");
+  assert.equal(available.getSnapshot().price, "499 kr");
   assert.equal(available.getSnapshot().status, "free");
 
   const unavailable = new BillingController(fakeBridge({ billingAvailable: false }).bridge, () => true);

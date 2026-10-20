@@ -21,6 +21,7 @@ type PurchaseResult = {
   status: "purchased" | "pending" | "cancelled" | "error";
   message?: string;
 };
+type PurchaseUpdate = { acknowledgement?: "acknowledged" | "retry" };
 
 export type PlayBillingBridge = {
   getRuntime(): Promise<RuntimeInfo>;
@@ -29,7 +30,7 @@ export type PlayBillingBridge = {
   purchase(options: { productId: string }): Promise<PurchaseResult>;
   addListener?(
     eventName: "purchaseUpdated",
-    listener: () => void,
+    listener: (event: PurchaseUpdate) => void,
   ): Promise<{ remove(): Promise<void> }>;
 };
 
@@ -40,7 +41,7 @@ type NativePlayBillingPlugin = {
   purchase(options: { productId: string }): Promise<PurchaseResult>;
   addListener(
     eventName: "purchaseUpdated",
-    listener: () => void,
+    listener: (event: PurchaseUpdate) => void,
   ): Promise<{ remove(): Promise<void> }>;
 };
 
@@ -81,6 +82,17 @@ export class BillingController {
       this.refreshInFlight = null;
     });
     return this.refreshInFlight;
+  }
+
+  async handlePurchaseUpdate(event: PurchaseUpdate = {}): Promise<void> {
+    if (event.acknowledgement === "retry") {
+      this.publish({
+        ...this.snapshot,
+        message: "Google Play could not acknowledge this purchase yet. Recheck later; Google Play may refund purchases that remain unacknowledged.",
+      });
+      return;
+    }
+    await this.refresh();
   }
 
   private async refreshPurchases(): Promise<void> {
@@ -252,8 +264,8 @@ export async function initializePlayBilling(): Promise<void> {
   if (!listenersRegistered) {
     listenersRegistered = true;
     try {
-      await NativePlayBilling.addListener("purchaseUpdated", () => {
-        void billingController.refresh();
+      await NativePlayBilling.addListener("purchaseUpdated", (event) => {
+        void billingController.handlePurchaseUpdate(event);
       });
       await NativeApp.addListener("appStateChange", ({ isActive }) => {
         if (isActive) void billingController.refresh();
