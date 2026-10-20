@@ -977,6 +977,140 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients, debugPor
     "Restoring the exported backup should recover the original saved workout and warm-up");
 }
 
+async function removeSavedSetAfterFailedSaveAndVerifyCharts(page, baseUrl, sourceClients, debugPort) {
+  const fixture = structuredClone(sourceClients.find((client) => client.id === "seed-amina"));
+  assert.ok(fixture, "The saved-set removal fixture should have a source client");
+  fixture.id = "test-remove-saved-set";
+  fixture.name = "Failed saved-set removal fixture";
+  fixture.sessions = [fixture.sessions[0]];
+  const session = fixture.sessions[0];
+  session.id = `${fixture.id}-session`;
+  session.date = todayIso();
+  const bench = session.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(bench, "The isolated saved workout should contain a mapped bench press");
+  session.exercises = [bench];
+
+  await page.evaluate(`(() => {
+    const data = JSON.parse(localStorage.getItem("setstack-v1"));
+    data.state.clients = data.state.clients.filter((client) => client.id !== ${JSON.stringify(fixture.id)});
+    data.state.clients.push(${JSON.stringify(fixture)});
+    localStorage.setItem("setstack-v1", JSON.stringify(data));
+  })()`);
+  await page.evaluate(`history.replaceState(null, "", ${JSON.stringify(`${baseUrl}/clients/${fixture.id}?tab=muscles&period=7`)})`);
+  await reloadAndWait(page, "isolated saved-set removal fixture", "dashboard-muscle-activity");
+
+  const beforeState = await storedState(page);
+  const savedFixture = beforeState.clients.find((client) => client.id === fixture.id);
+  const savedSession = savedFixture?.sessions.find((item) => item.id === session.id);
+  const savedBench = savedSession?.exercises.find((exercise) => exercise.id === bench.id);
+  assert.ok(savedSession && savedBench, "The isolated saved workout should be available for editing");
+  assert.equal(savedBench.sets.length, 2, "The fixture bench press should begin with two saved sets");
+  const removedSet = savedBench.sets[1];
+  const retainedSet = savedBench.sets[0];
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedSession = expectedClients.find((client) => client.id === fixture.id)
+    .sessions.find((item) => item.id === session.id);
+  const expectedBench = expectedSession.exercises.find((exercise) => exercise.id === bench.id);
+  expectedBench.sets = expectedBench.sets.filter((set) => set.id !== removedSet.id);
+  const snapshot = async (targetPage, ownerId) => ({
+    chest: await muscleChartSnapshot(targetPage, baseUrl, ownerId, "chest"),
+    triceps: await muscleChartSnapshot(targetPage, baseUrl, ownerId, "triceps"),
+  });
+  const beforeCharts = await snapshot(page, fixture.id);
+  const otherBeforeCharts = await snapshot(page, "seed-leo");
+
+  await openSavedSessionEditor(page, baseUrl, session.id, fixture.id);
+  const expanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(expanded, true, "Expand the saved bench press sets");
+  await page.click(`button-editor-remove-set-${removedSet.id}`);
+  assert.equal(
+    await page.evaluate(`document.querySelectorAll('[data-testid="editor-exercise-${bench.id}"] [data-testid^="editor-set-"]').length`),
+    1,
+    "The selected set should be removed from the pending editor change",
+  );
+
+  const beforeFailedSaveRaw = await page.evaluate('localStorage.getItem("setstack-v1")');
+  await page.evaluate(`(() => {
+    window.__coachauraFailNextSetstackWrite = true;
+    const originalSetItem = Storage.prototype.setItem;
+    Storage.prototype.setItem = function(key, value) {
+      if (key === "setstack-v1" && window.__coachauraFailNextSetstackWrite) {
+        window.__coachauraFailNextSetstackWrite = false;
+        throw new DOMException("Simulated storage write failure", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    };
+  })()`);
+  await page.click("button-editor-save");
+  await waitFor("failed saved-set removal warning", () => page.evaluate(
+    'document.querySelector(\'[data-testid="button-retry-storage"]\') !== null',
+  ));
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') !== null',
+  ), true, "The editor must remain open after a failed saved-set removal");
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="editor-set-${retainedSet.id}"]') !== null`,
+  ), true, "The intended remaining set should stay in the editor for retry");
+  assert.equal(await page.evaluate(
+    'localStorage.getItem("setstack-v1")',
+  ), beforeFailedSaveRaw, "A failed removal must leave saved workout history byte-for-byte unchanged");
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')?.textContent',
+  ), "Could not save this workout.", "The editor must report that the removal was not saved");
+
+  const chartPage = await openPage(debugPort);
+  try {
+    assert.deepEqual(await snapshot(chartPage, fixture.id), beforeCharts,
+      "The failed removal must leave the client's visible muscle charts unchanged");
+    assert.deepEqual(await snapshot(chartPage, "seed-leo"), otherBeforeCharts,
+      "The failed removal must leave another client's muscle charts unchanged");
+    assert.deepEqual((await storedState(chartPage)).clients, beforeState.clients,
+      "A separate tab must still read the original saved workout history after the failed write");
+  } finally {
+    await chartPage.close();
+  }
+
+  await page.click("button-retry-storage");
+  await waitFor("storage retry to clear the removal failure", () => page.evaluate(
+    'document.querySelector(\'[data-testid="button-retry-storage"]\') === null',
+  ));
+  assert.equal(await page.evaluate(
+    `document.querySelector('[data-testid="editor-set-${retainedSet.id}"]') !== null`,
+  ), true, "The pending removal should remain available after storage recovers");
+  await page.click("button-editor-save");
+  await waitFor("saved-set removal retry to close the editor", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+
+  const afterState = await storedState(page);
+  assert.deepEqual(afterState.clients, expectedClients,
+    "Retrying the removal should change only the intended saved set");
+  const afterBench = afterState.clients.find((client) => client.id === fixture.id)
+    ?.sessions.find((item) => item.id === session.id)
+    ?.exercises.find((exercise) => exercise.id === bench.id);
+  assert.deepEqual(afterBench?.sets, [retainedSet],
+    "The retry should remove the selected set and retain the other set exactly");
+  const afterCharts = await snapshot(page, fixture.id);
+  for (const muscle of ["chest", "triceps"]) {
+    assert.equal(afterCharts[muscle].workingSets, beforeCharts[muscle].workingSets - 1,
+      `${muscle}: the successful removal should subtract only one working set`);
+  }
+  assert.deepEqual(await snapshot(page, "seed-leo"), otherBeforeCharts,
+    "The successful removal must not change another client's charts");
+
+  await reloadAndWait(page, "reloaded saved-set removal retry", "dashboard-muscle-activity");
+  const reloadedState = await storedState(page);
+  assert.deepEqual(reloadedState.clients, expectedClients,
+    "Reloading after the retry must preserve only the intended set removal");
+  assert.deepEqual(await snapshot(page, fixture.id), afterCharts,
+    "The successful removal's muscle-chart totals must remain correct after reload");
+}
+
 async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
   const beforeState = await storedState(page);
   const amina = beforeState.clients.find((client) => client.id === "seed-amina");
@@ -3373,6 +3507,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Saving a workout with every set removed is rejected; cancelling preserves history and charts");
   await addSavedSetAndVerifyCharts(page, baseUrl, initialClients, debugPort);
   t.diagnostic("Failed added-set saves preserve editor values and charts; retry and reload persist the set");
+  await removeSavedSetAfterFailedSaveAndVerifyCharts(page, baseUrl, initialClients, debugPort);
+  t.diagnostic("Failed saved-set removals preserve workout history and muscle charts; retry removes only the intended set after reload");
   await rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Negative and non-finite saved-load corrections are rejected without changing storage or muscle charts");
   await enforceSavedLoadCeilingAndVerifyStrengthHistory(page, baseUrl);
