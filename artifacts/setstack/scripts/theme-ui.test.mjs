@@ -2872,13 +2872,84 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   const stateBeforePersonalWorkout = await storedState(page);
   await page.click("tab-individual-exercises");
   const exerciseId = kExercises[0].id;
+  const secondExerciseId = kExercises[1].id;
+  await waitFor("personal workout planner tabs", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="tab-individual-exercises-library"]\')',
+  ));
+  await page.click("tab-individual-exercises-library");
   await page.click(`button-select-library-exercise-${exerciseId}`);
+  await page.fill("input-new-plan-name", "TEST Push Day");
+  await page.click("button-create-plan-with-exercise");
+  await waitFor("new personal plan", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="list-individual-plans"]\')',
+  ));
+  let personalPlanState = await storedState(page);
+  let personalPlan = personalPlanState.individualProfile.plans.at(-1);
+  assert.equal(personalPlan.name, "TEST Push Day");
+  assert.deepEqual(personalPlan.exerciseIds, [exerciseId], "Creating a plan from the library includes the selected exercise");
+
+  await page.click("tab-individual-exercises-library");
+  await page.click(`button-select-library-exercise-${secondExerciseId}`);
+  await page.click(`button-add-exercise-to-plan-${personalPlan.id}`);
+  personalPlanState = await storedState(page);
+  personalPlan = personalPlanState.individualProfile.plans.find((plan) => plan.id === personalPlan.id);
+  assert.deepEqual(personalPlan.exerciseIds, [exerciseId, secondExerciseId], "A selected exercise is appended to the existing plan");
+
+  await page.click("tab-individual-exercises-library");
+  await page.click(`button-select-library-exercise-${secondExerciseId}`);
+  assert.equal(await page.evaluate(`document.querySelector('[data-testid="button-add-exercise-to-plan-${personalPlan.id}"]')?.disabled`), true, "Duplicate exercises cannot be added accidentally");
+  await page.click("button-close-dialog");
+  await page.click("tab-individual-exercises-plans");
+  await page.click(`button-edit-individual-plan-${personalPlan.id}`);
+  await waitFor("personal plan editor", () => page.evaluate(
+    `!!document.querySelector('[data-testid="button-toggle-targets-${secondExerciseId}"]')`,
+  ));
+  await page.click(`button-toggle-targets-${secondExerciseId}`);
+  await page.click(`button-move-exercise-up-${secondExerciseId}`);
+  await page.fill("input-routine-name", "TEST Upper Day");
+  await page.click("button-save-routine");
+  personalPlanState = await storedState(page);
+  personalPlan = personalPlanState.individualProfile.plans.find((plan) => plan.id === personalPlan.id);
+  assert.equal(personalPlan.name, "TEST Upper Day", "Plan names can be edited");
+  assert.deepEqual(personalPlan.exerciseIds, [secondExerciseId, exerciseId], "Exercise order can be changed and saved");
+  assert.deepEqual(personalPlanState.clients, stateBeforePersonalWorkout.clients, "Plans remain separate from trainer client records");
+
+  await page.send("Page.reload");
+  await waitFor("Individual Mode after reload", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="individual-bottom-navigation"]\')',
+  ));
+  await page.click("tab-individual-exercises");
+  await waitFor("personal plans after reload", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="tab-individual-exercises-plans"]\')',
+  ));
+  await page.click("tab-individual-exercises-plans");
+  const reloadedPlan = (await storedState(page)).individualProfile.plans.find((plan) => plan.id === personalPlan.id);
+  assert.deepEqual(reloadedPlan.exerciseIds, [secondExerciseId, exerciseId], "Plans and their order survive app reloads");
+
+  await page.click(`button-start-individual-plan-${personalPlan.id}`);
   await waitFor("personal workout logger", () => page.evaluate(
     '!!document.querySelector(\'[data-testid="panel-workout-logger"]\')',
   ));
   const personalDraftState = await storedState(page);
-  assert.equal(personalDraftState.draft?.clientId, INDIVIDUAL_PROFILE_ID, "Selecting an exercise should create a separate personal draft");
-  assert.equal(personalDraftState.draft?.exercises?.[0]?.id, exerciseId, "The selected library exercise should be added to the personal draft");
-  assert.deepEqual(personalDraftState.clients, stateBeforePersonalWorkout.clients, "Personal workout logging must not modify trainer client records");
-  assert.deepEqual(personalDraftState.clients, clientsBeforeIndividual, "Switching tabs and adding a personal exercise must preserve all client records");
+  assert.equal(personalDraftState.draft?.clientId, INDIVIDUAL_PROFILE_ID, "Plan workouts use the separate personal owner");
+  assert.equal(personalDraftState.draft?.routineId, personalPlan.id);
+  assert.deepEqual(personalDraftState.draft?.exercises.map((exercise) => exercise.id), [secondExerciseId, exerciseId], "Starting a plan preloads its saved exercise order");
+  await page.fill("input-set-weight", "60");
+  await page.fill("input-set-reps", "8");
+  await page.click("button-log-set");
+  await page.click("button-finish-session");
+  const completedPersonalState = await storedState(page);
+  assert.equal(completedPersonalState.draft, null, "Finishing the logger clears only the active draft");
+  assert.equal(completedPersonalState.individualProfile.sessions.length, 1, "Completed plan workouts appear in personal history");
+  assert.deepEqual(completedPersonalState.individualProfile.plans.find((plan) => plan.id === personalPlan.id).exerciseIds, [secondExerciseId, exerciseId], "Live workout edits do not mutate the saved plan");
+  assert.deepEqual(completedPersonalState.clients, clientsBeforeIndividual, "Personal workout logging must not modify trainer client records");
+
+  await page.click("tab-individual-exercises");
+  await page.click("tab-individual-exercises-plans");
+  await page.click(`button-delete-individual-plan-${personalPlan.id}`);
+  await page.click("button-confirm-delete-individual-plan");
+  const afterPlanDelete = await storedState(page);
+  assert.equal(afterPlanDelete.individualProfile.plans.length, 0, "A plan can be deleted");
+  assert.equal(afterPlanDelete.individualProfile.sessions.length, 1, "Deleting a plan leaves completed workout history intact");
+  assert.deepEqual(afterPlanDelete.clients, clientsBeforeIndividual, "Plan changes never affect trainer-managed clients");
 });

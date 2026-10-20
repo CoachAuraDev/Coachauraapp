@@ -35,6 +35,7 @@ export type BackupPreview = {
   hasDraft: boolean;
   legacy: boolean;
   preservesCurrentIndividualData: boolean;
+  preservesCurrentIndividualPlans: boolean;
 };
 export type BackupResult = { ok: true; preview: BackupPreview } | { ok: false; error: string };
 
@@ -150,9 +151,10 @@ export function validateSavedFloor(value: unknown): SavedFloor {
     throw new Error("workspace.trainingMode: unsupported mode.");
   }
   const savedIndividual = floor.individualProfile === undefined
-    ? { restSeconds: 90, sessions: [] }
+    ? { restSeconds: 90, sessions: [], plans: [] }
     : record(floor.individualProfile, "individualProfile");
   number(savedIndividual.restSeconds, "individualProfile.restSeconds");
+  const individualPlans = routines(savedIndividual.plans === undefined ? [] : savedIndividual.plans, "individualProfile.plans");
   const individualSessions = objects(savedIndividual.sessions, "individualProfile.sessions").map((session, index) => {
     const path = `individualProfile.sessions[${index}]`;
     date(session.date, `${path}.date`);
@@ -165,6 +167,7 @@ export function validateSavedFloor(value: unknown): SavedFloor {
   const individualProfile: IndividualProfile = {
     restSeconds: savedIndividual.restSeconds as number,
     sessions: individualSessions as unknown as IndividualProfile["sessions"],
+    plans: individualPlans,
   };
   const clients = objects(floor.clients, "clients").map((c, i) => {
     const p = `clients[${i}]`;
@@ -217,7 +220,7 @@ export function validateSavedFloor(value: unknown): SavedFloor {
       ...(c.muscleTargets === undefined ? {} : { muscleTargets }),
     } as unknown as Client;
   });
-  for (const r of [...templates, ...clients.flatMap((c) => c.routines)]) {
+  for (const r of [...templates, ...individualPlans, ...clients.flatMap((c) => c.routines)]) {
     for (const exerciseId of r.exerciseIds) {
       if (!knownExercises.has(exerciseId)) throw new Error(`Routine "${r.name}" references unavailable exercise ${exerciseId}.`);
     }
@@ -228,7 +231,9 @@ export function validateSavedFloor(value: unknown): SavedFloor {
     const owner = clients.find((c) => c.id === d.clientId);
     const isIndividual = d.clientId === INDIVIDUAL_PROFILE_ID;
     if (!owner && !isIndividual) throw new Error("draft: client does not exist.");
-    if (isIndividual && d.routineId !== null) throw new Error("draft: personal workouts cannot reference a client routine.");
+    if (isIndividual && d.routineId !== null && !individualPlans.some((r) => r.id === d.routineId)) {
+      throw new Error("draft: personal plan does not exist.");
+    }
     if (owner && d.routineId !== null && !owner.routines.some((r) => r.id === d.routineId)) {
       throw new Error("draft: assigned routine does not exist.");
     }
@@ -306,6 +311,7 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
     };
     let legacy = true;
     let preservesCurrentIndividualData = false;
+    let preservesCurrentIndividualPlans = false;
     let candidate: unknown;
     if (Array.isArray(parsed)) {
       preservesCurrentIndividualData = true;
@@ -328,6 +334,12 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
         }
       }
       preservesCurrentIndividualData = body.version !== 3;
+      if (body.version === 3) {
+        const savedProfile = record(body.individualProfile, "individualProfile");
+        preservesCurrentIndividualPlans = !("plans" in savedProfile);
+      } else {
+        preservesCurrentIndividualPlans = true;
+      }
       candidate = legacy
         ? { ...baseline, clients: body.clients, custom: "custom" in body ? body.custom : current.custom, templates: "templates" in body ? body.templates : current.templates, draft: null }
         : body.version === 2
@@ -340,7 +352,16 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
             unit: body.unit,
             appearance: body.appearance ?? baseline.appearance,
           }
-          : { ...baseline, ...body };
+          : body.version === 3 && preservesCurrentIndividualPlans
+            ? {
+              ...baseline,
+              ...body,
+              individualProfile: {
+                ...record(body.individualProfile, "individualProfile"),
+                plans: baseline.individualProfile?.plans ?? [],
+              },
+            }
+            : { ...baseline, ...body };
     }
     const data = validateSavedFloor(candidate);
     return { ok: true, preview: {
@@ -348,6 +369,7 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
       sessions: data.clients.reduce((n, c) => n + c.sessions.length, 0) + data.individualProfile!.sessions.length,
       hasDraft: data.draft !== null,
       preservesCurrentIndividualData,
+      preservesCurrentIndividualPlans,
     } };
   } catch (error) {
     return { ok: false, error: error instanceof SyntaxError ? "That file is not valid JSON." : error instanceof Error ? error.message : "Invalid backup." };

@@ -12,7 +12,7 @@ function fixture(): SavedFloor {
   return {
     clients: seedClients().map((c, i) => ({ ...c, name: `TEST Client ${i}` })),
     custom: [], templates: [], draft: null, unit: "kg", appearance: DEFAULT_APPEARANCE,
-    trainingMode: "trainer", individualProfile: { restSeconds: 90, sessions: [] },
+    trainingMode: "trainer", individualProfile: { restSeconds: 90, sessions: [], plans: [] },
   };
 }
 function reject(data: unknown, pattern: RegExp) {
@@ -63,9 +63,13 @@ test("TEST full nested validation rejects malformed and incompatible backups wit
 test("TEST version 3 roundtrip preserves personal mode, sessions, exact loads and pending draft", () => {
   const source = fixture();
   source.clients[0].muscleTargets = { chest: 10.5, calves: 4 };
+  const personalPlan = structuredClone(source.clients[0].routines[0]);
+  personalPlan.id = "personal-plan-test";
+  personalPlan.name = "TEST personal plan";
   source.trainingMode = "individual";
   source.individualProfile = {
     restSeconds: 75,
+    plans: [personalPlan],
     sessions: [{
       id: "personal-test-session",
       date: "2025-03-20",
@@ -79,8 +83,7 @@ test("TEST version 3 roundtrip preserves personal mode, sessions, exact loads an
     }],
   };
   useFloor.setState(source);
-  const client = useFloor.getState().clients[0];
-  useFloor.getState().startSession(client.id, client.routines[0].id);
+  useFloor.getState().startSession("__coachaura_individual__", personalPlan.id);
   const exerciseId = useFloor.getState().draft!.exercises[0].id;
   useFloor.getState().setDraftEntry(exerciseId, { reps: 8, weightKg: 60.625, rir: 2, kind: "normal" });
   useFloor.getState().setUnit("lb");
@@ -94,6 +97,7 @@ test("TEST version 3 roundtrip preserves personal mode, sessions, exact loads an
     assert.equal(result.preview.data.unit, "lb");
     assert.equal(result.preview.data.trainingMode, "individual");
     assert.deepEqual(result.preview.data.individualProfile, source.individualProfile);
+    assert.equal(result.preview.data.draft!.routineId, personalPlan.id);
     assert.deepEqual(result.preview.data.clients[0].muscleTargets, { chest: 10.5, calves: 4 });
   }
   useFloor.setState(fixture());
@@ -138,6 +142,7 @@ test("TEST version 2 restore preserves current personal history and training mod
   current.trainingMode = "individual";
   current.individualProfile = {
     restSeconds: 80,
+    plans: [],
     sessions: [{
       id: "personal-preserved", date: "2025-03-20", durationSec: 1200, name: "TEST preserved",
       routineId: null, exercises: [],
@@ -152,6 +157,21 @@ test("TEST version 2 restore preserves current personal history and training mod
     assert.equal(result.preview.preservesCurrentIndividualData, true);
     assert.equal(result.preview.data.trainingMode, "individual");
     assert.deepEqual(result.preview.data.individualProfile, current.individualProfile);
+  }
+});
+
+test("TEST older version-3 backup without personal plans preserves current plans safely", () => {
+  const current = fixture();
+  const plan = structuredClone(current.clients[0].routines[0]);
+  plan.id = "current-personal-plan";
+  current.individualProfile!.plans = [plan];
+  const oldVersion3 = fixture();
+  delete (oldVersion3.individualProfile as Partial<NonNullable<typeof oldVersion3.individualProfile>>).plans;
+  const result = inspectBackup(JSON.stringify({ app: "CoachAura", version: 3, ...oldVersion3 }), current);
+  assert.ok(result.ok);
+  if (result.ok) {
+    assert.equal(result.preview.preservesCurrentIndividualPlans, true);
+    assert.deepEqual(result.preview.data.individualProfile?.plans, [plan]);
   }
 });
 test("TEST incomplete or out-of-range pending input survives backup without becoming a logged set", () => {

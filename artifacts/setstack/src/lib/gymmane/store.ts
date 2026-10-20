@@ -48,6 +48,8 @@ type FloorState = {
   setRest: (id: string, seconds: number) => void;
   addBodyweight: (id: string, kg: number) => void;
   saveRoutine: (clientId: string, routine: Routine) => void;
+  saveIndividualPlan: (routine: Routine) => boolean;
+  deleteIndividualPlan: (routineId: string) => boolean;
   saveTemplate: (routine: Routine) => void;
   deleteTemplate: (id: string) => void;
   assignTemplate: (clientId: string, templateId: string) => void;
@@ -111,7 +113,7 @@ export const useFloor = create<FloorState>()(
       // Demo data remains opt-in in Settings. Never substitute it for a failed read.
       clients: typeof window === "undefined" ? seedClients() : [],
       trainingMode: "trainer",
-      individualProfile: { restSeconds: 90, sessions: [] },
+      individualProfile: { restSeconds: 90, sessions: [], plans: [] },
       unit: "kg",
       appearance: DEFAULT_APPEARANCE,
       draft: null,
@@ -165,6 +167,32 @@ export const useFloor = create<FloorState>()(
             };
           }),
         }),
+      saveIndividualPlan: (routine) => {
+        const profile = get().individualProfile;
+        const plans = profile.plans ?? [];
+        const updated = plans.some((item) => item.id === routine.id)
+          ? plans.map((item) => item.id === routine.id ? structuredClone(routine) : item)
+          : [...plans, structuredClone(routine)];
+        try {
+          set({ individualProfile: { ...profile, plans: updated } });
+          return true;
+        } catch (error) {
+          if (error instanceof PersistenceFailure) return false;
+          throw error;
+        }
+      },
+      deleteIndividualPlan: (routineId) => {
+        const profile = get().individualProfile;
+        const plans = profile.plans ?? [];
+        if (!plans.some((item) => item.id === routineId)) return false;
+        try {
+          set({ individualProfile: { ...profile, plans: plans.filter((item) => item.id !== routineId) } });
+          return true;
+        } catch (error) {
+          if (error instanceof PersistenceFailure) return false;
+          throw error;
+        }
+      },
       saveTemplate: (routine) => set({
         templates: get().templates.some((item) => item.id === routine.id)
           ? get().templates.map((item) => item.id === routine.id ? structuredClone(routine) : item)
@@ -248,6 +276,7 @@ export const useFloor = create<FloorState>()(
         const owner = workoutOwner(get(), clientId);
         if (!owner) return;
         const routine = routineId ? owner.routines.find((item) => item.id === routineId) : null;
+        if (routineId !== null && !routine) return;
         const pool = [...kExercises, ...get().custom];
         const exercises: ExerciseLog[] = (routine?.exerciseIds ?? []).map((id) => {
           const info = pool.find((exercise) => exercise.id === id);
@@ -505,8 +534,8 @@ export const useFloor = create<FloorState>()(
           withRecoveryWrite(() => set({
             ...result.preview.data,
             notice: result.preview.preservesCurrentIndividualData
-              ? `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"}; kept ${result.preview.data.individualProfile!.sessions.length} existing personal workout${result.preview.data.individualProfile!.sessions.length === 1 ? "" : "s"} and training mode.`
-              : `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"} and ${result.preview.data.individualProfile!.sessions.length} personal workout${result.preview.data.individualProfile!.sessions.length === 1 ? "" : "s"}.`,
+              ? `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"}; kept ${result.preview.data.individualProfile!.sessions.length} personal workout${result.preview.data.individualProfile!.sessions.length === 1 ? "" : "s"}, ${result.preview.data.individualProfile!.plans?.length ?? 0} plan${result.preview.data.individualProfile!.plans?.length === 1 ? "" : "s"} and training mode.`
+              : `Restored ${result.preview.clients} client${result.preview.clients === 1 ? "" : "s"}, ${result.preview.data.individualProfile!.sessions.length} personal workout${result.preview.data.individualProfile!.sessions.length === 1 ? "" : "s"} and ${result.preview.data.individualProfile!.plans?.length ?? 0} personal plan${result.preview.data.individualProfile!.plans?.length === 1 ? "" : "s"}.`,
           }));
           return "";
         } catch (error) {

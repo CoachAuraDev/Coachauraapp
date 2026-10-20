@@ -17,7 +17,7 @@
     "android:open": "pnpm run android:sync && cap open android",
     "android:debug": "pnpm run android:sync && node scripts/android-debug.mjs",
     "android:run": "pnpm run android:sync && cap run android",
-    "test:ui": "node --experimental-strip-types --test scripts/theme-ui.test.mjs scripts/backup-reminder-ui.test.mjs",
+    "test:ui": "node --experimental-strip-types --test scripts/theme-ui.test.mjs scripts/backup-reminder-ui.test.mjs scripts/individual-planner-ui.test.mjs",
     "test:backup-reminder-ui": "node --experimental-strip-types --test scripts/backup-reminder-ui.test.mjs",
     "test:unit": "node --experimental-strip-types --test src/lib/*.test.ts src/lib/gymmane/*.test.ts src/lib/native/*.test.ts src/lib/billing/*.test.ts"
   },

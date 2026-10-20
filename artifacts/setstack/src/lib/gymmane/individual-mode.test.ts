@@ -9,7 +9,7 @@ import {
   getTrainingTrend,
 } from "./individual-analytics.ts";
 import { DEFAULT_APPEARANCE } from "./appearance.ts";
-import { INDIVIDUAL_PROFILE_ID, individualWorkoutOwner, type Client, type SessionLog, type WorkoutOwner } from "./models.ts";
+import { INDIVIDUAL_PROFILE_ID, individualWorkoutOwner, type Client, type Routine, type SessionLog, type WorkoutOwner } from "./models.ts";
 import { useFloor } from "./store.ts";
 
 const today = "2026-10-19";
@@ -39,7 +39,7 @@ function resetStore(client = testClient()) {
   useFloor.setState({
     clients: [client],
     trainingMode: "trainer",
-    individualProfile: { restSeconds: 90, sessions: [] },
+    individualProfile: { restSeconds: 90, sessions: [], plans: [] },
     draft: null,
     custom: [],
     templates: [],
@@ -158,5 +158,48 @@ test("TEST switching modes preserves an unfinished personal workout and its logg
   useFloor.getState().setTrainingMode("individual");
   assert.equal(useFloor.getState().draft?.clientId, INDIVIDUAL_PROFILE_ID);
   assert.equal(useFloor.getState().clients[0].sessions.length, 0);
+  resetStore();
+});
+
+test("TEST personal plans preload ordered exercises, save separately, and survive completion/deletion", async () => {
+  const client = testClient();
+  client.routines = [{
+    id: "trainer-plan", name: "TEST client plan", group: "Client", exerciseIds: [row.id],
+    sets: { [row.id]: 2 }, plan: {}, rest: {},
+  }];
+  resetStore(client);
+  const plan: Routine = {
+    id: "personal-plan", name: "TEST Push Day", group: "Personal",
+    exerciseIds: [bench.id, row.id],
+    sets: { [bench.id]: 3, [row.id]: 2 },
+    plan: { [bench.id]: [{ reps: 8, weightKg: null, kind: "normal" }] },
+    rest: { [bench.id]: 75 },
+  };
+  assert.equal(useFloor.getState().saveIndividualPlan(plan), true);
+  assert.deepEqual(individualWorkoutOwner(useFloor.getState().individualProfile).routines.map((item) => item.id), ["personal-plan"]);
+  assert.deepEqual(useFloor.getState().clients[0].routines.map((item) => item.id), ["trainer-plan"]);
+
+  useFloor.getState().startSession(INDIVIDUAL_PROFILE_ID, plan.id);
+  const draft = useFloor.getState().draft!;
+  assert.equal(draft.routineId, plan.id);
+  assert.equal(draft.name, plan.name);
+  assert.deepEqual(draft.exercises.map((exercise) => exercise.id), [bench.id, row.id]);
+  assert.deepEqual(useFloor.getState().individualProfile.plans?.[0], plan);
+  useFloor.getState().logSet({ reps: 8, weight: 60, kind: "normal", rpe: null });
+  useFloor.getState().setActive(1);
+  useFloor.getState().logSet({ reps: 10, weight: 35, kind: "normal", rpe: null });
+  assert.deepEqual(useFloor.getState().individualProfile.plans?.[0], plan, "live set logging does not update the saved plan");
+  assert.equal(useFloor.getState().finishSession(), INDIVIDUAL_PROFILE_ID);
+  assert.deepEqual(useFloor.getState().individualProfile.sessions[0].exercises.map((exercise) => exercise.id), [bench.id, row.id]);
+  assert.equal(useFloor.getState().clients[0].sessions.length, 0);
+  await useFloor.persist.rehydrate();
+  assert.deepEqual(useFloor.getState().individualProfile.plans?.[0], plan, "saved plans survive store rehydration");
+  assert.equal(useFloor.getState().individualProfile.sessions.length, 1);
+  assert.equal(useFloor.getState().deleteIndividualPlan(plan.id), true);
+  assert.equal(useFloor.getState().individualProfile.plans?.length, 0);
+  assert.equal(useFloor.getState().individualProfile.sessions.length, 1, "deleting a reusable plan keeps completed workout history");
+
+  const backup = useFloor.getState().previewBackup(useFloor.getState().exportBackup());
+  assert.equal(backup.ok, true);
   resetStore();
 });

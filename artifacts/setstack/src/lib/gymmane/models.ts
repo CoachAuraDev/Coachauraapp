@@ -83,6 +83,8 @@ export type TrainingMode = "trainer" | "individual";
 export type IndividualProfile = {
   restSeconds: number;
   sessions: SessionLog[];
+  /** Personal workout plans are separate from trainer-client routines. */
+  plans?: Routine[];
 };
 /** The smallest shared shape needed by workout logging and saved-session analytics. */
 export type WorkoutOwner = Pick<Client, "id" | "name" | "restSeconds" | "sessions" | "routines">;
@@ -92,7 +94,7 @@ export function individualWorkoutOwner(profile: IndividualProfile): WorkoutOwner
     name: "My training",
     restSeconds: profile.restSeconds,
     sessions: profile.sessions,
-    routines: [],
+    routines: profile.plans ?? [],
   };
 }
 

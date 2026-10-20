@@ -26,7 +26,6 @@ import {
 import { useFloor } from "@/lib/gymmane/store";
 import { BackupReminderCard, useBackupReminder } from "@/components/backup-reminder";
 import { kExercises, type CatalogExercise } from "@/lib/gymmane/catalog";
-import { ExerciseLibrary } from "@/components/trainer-dashboard";
 import {
   formatLoad,
   todayIso,
@@ -50,6 +49,7 @@ import { MUSCLE_GROUPS, type MuscleGroup } from "@/lib/gymmane/muscle-activity";
 import { INDIVIDUAL_PROFILE_ID, individualWorkoutOwner, type Draft, type IndividualProfile, type SessionLog } from "@/lib/gymmane/models";
 
 const MuscleActivityDashboard = lazy(() => import("@/components/muscle-activity-dashboard").then((module) => ({ default: module.MuscleActivityDashboard })));
+const IndividualWorkoutPlanner = lazy(() => import("@/components/individual-workout-planner").then((module) => ({ default: module.IndividualWorkoutPlanner })));
 
 type IndividualDashboardProps = {
   profile: IndividualProfile;
@@ -57,7 +57,7 @@ type IndividualDashboardProps = {
   draft: Draft | null;
   premium: boolean;
   onStartWorkout: () => void;
-  onAddExerciseToWorkout: (exercise: CatalogExercise) => void;
+  onStartPlan: (routineId: string) => void;
   onUpgrade: () => void;
   onOpenSettings: () => void;
   onEditSession: (session: SessionLog) => void;
@@ -95,7 +95,7 @@ export function IndividualDashboard({
   draft,
   premium,
   onStartWorkout,
-  onAddExerciseToWorkout,
+  onStartPlan,
   onUpgrade,
   onOpenSettings,
   onEditSession,
@@ -351,7 +351,9 @@ export function IndividualDashboard({
       <p className={`px-1 text-[10px] leading-relaxed ${muted}`} data-testid="text-individual-analytics-method">Completed sessions only. Working-set load volume is Σ reps × stored load; warm-ups are excluded. Strength values are estimates from the logged set data. No dates or values are interpolated.</p>
       </>}
 
-      {tab === "exercises" && <ExerciseLibrary inline onSelect={onAddExerciseToWorkout}/>}
+      {tab === "exercises" && <Suspense fallback={<div className={panel} role="status">Opening exercises…</div>}>
+        <IndividualWorkoutPlanner profile={profile} draft={draft} onStartPlan={onStartPlan}/>
+      </Suspense>}
 
       {tab === "profile" && <>
       <header className="relative overflow-hidden rounded-[1.75rem] border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-5 sm:p-7">

@@ -10,8 +10,16 @@ import { Modal, fieldClass, labelClass, primaryBtn, quietBtn } from "./shared";
 
 const blank = (reps: number | null): PlannedSet => ({ reps, weightKg: null, kind: "normal" });
 
-export function RoutineModal({ client, routine, pool, onClose, onDelete }: { client: Client; routine?: Routine; pool: CatalogExercise[]; onClose: () => void; onDelete?: () => void }) {
+export function RoutineModal({ client, routine, pool, onClose, onDelete, personalMode = false }: {
+  client: Pick<Client, "id">;
+  routine?: Routine;
+  pool: CatalogExercise[];
+  onClose: () => void;
+  onDelete?: () => void;
+  personalMode?: boolean;
+}) {
   const saveRoutine = useFloor((s) => s.saveRoutine);
+  const saveIndividualPlan = useFloor((s) => s.saveIndividualPlan);
   const saveTemplate = useFloor((s) => s.saveTemplate);
   const setNotice = useFloor((s) => s.setNotice);
   const savedCustom = useFloor((s) => s.custom);
@@ -56,7 +64,8 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
     return next;
   });
   const build = (id: string): Routine | null => {
-    if (!name.trim()) { setError("Give this routine a name."); return null; }
+    if (!name.trim()) { setError(personalMode ? "Give this plan a name." : "Give this routine a name."); return null; }
+    if (personalMode && exerciseIds.length === 0) { setError("Add at least one exercise before saving this plan."); return null; }
     const sets: Record<string, number> = {}, rest: Record<string, number> = {}, outPlan: Record<string, PlannedSet[]> = {};
     exerciseIds.forEach((x) => {
       sets[x] = countOf(x);
@@ -69,7 +78,15 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
     e.preventDefault();
     const next = build(routine?.id ?? uid());
     if (!next) return;
-    saveRoutine(client.id, next);
+    if (personalMode) {
+      if (!saveIndividualPlan(next)) {
+        setError("This plan could not be saved to this device. Your unsaved edits are still here; check device storage and try again.");
+        return;
+      }
+      setNotice(`${next.name} saved.`);
+    } else {
+      saveRoutine(client.id, next);
+    }
     onClose();
   };
   const asTemplate = () => {
@@ -81,10 +98,10 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
     setNotice(`Template "${next.name}" saved. Assigning it later creates an independent copy.`);
   };
 
-  return <Modal title={routine ? "Edit routine" : "Build a routine"} onClose={onClose} wide><form onSubmit={submit}>
+  return <Modal title={personalMode ? (routine ? "Edit workout plan" : "Create workout plan") : (routine ? "Edit routine" : "Build a routine")} onClose={onClose} wide><form onSubmit={submit}>
     <div className="grid gap-3 sm:grid-cols-2">
-      <div><label className={labelClass} htmlFor="routine-name">Routine name</label><input id="routine-name" className={`${fieldClass} min-h-11`} value={name} onChange={(e) => setName(e.target.value)} placeholder="Upper body A" data-testid="input-routine-name"/></div>
-      <div><label className={labelClass} htmlFor="routine-group">Program / group</label><input id="routine-group" className={`${fieldClass} min-h-11`} value={group} onChange={(e) => setGroup(e.target.value)} placeholder="Strength block" data-testid="input-routine-group"/></div>
+      <div><label className={labelClass} htmlFor="routine-name">{personalMode ? "Plan name" : "Routine name"}</label><input id="routine-name" className={`${fieldClass} min-h-11`} value={name} onChange={(e) => setName(e.target.value)} placeholder={personalMode ? "Push Day" : "Upper body A"} data-testid="input-routine-name"/></div>
+      <div><label className={labelClass} htmlFor="routine-group">{personalMode ? "Training focus" : "Program / group"}</label><input id="routine-group" className={`${fieldClass} min-h-11`} value={group} onChange={(e) => setGroup(e.target.value)} placeholder={personalMode ? "Strength" : "Strength block"} data-testid="input-routine-group"/></div>
     </div>
 
     <div className="mt-5 rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3">
@@ -144,9 +161,9 @@ export function RoutineModal({ client, routine, pool, onClose, onDelete }: { cli
       })}</div> : <div className="rounded-xl border border-dashed border-[hsl(var(--border))] bg-[hsl(var(--background))] p-4 text-center" data-testid="empty-routine-exercises"><p className="text-sm font-semibold">Start building your workout</p><p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Add exercises to create this training session.</p><p className="mt-2 text-[11px] text-[hsl(var(--muted-foreground))]">Search above and tap Add beside an exercise.</p></div>}
     </div>
     {error && <p className="mt-3 text-sm text-[hsl(0_90%_75%)]" role="alert" data-testid="text-routine-error">{error}</p>}
-    <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-[hsl(var(--border))] pt-4">
-      <div className="flex flex-wrap gap-2">{onDelete && <button type="button" className={`${quietBtn} text-[hsl(var(--destructive))]`} onClick={onDelete} data-testid="button-delete-routine"><Trash2 size={14}/>Delete routine</button>}<button type="button" className={quietBtn} onClick={asTemplate} data-testid="button-save-template"><BookmarkPlus size={14}/>Save as template</button></div>
-      <div className="ml-auto flex gap-2"><button type="button" className={quietBtn} onClick={onClose} data-testid="button-cancel-routine">Cancel</button><button className={primaryBtn} type="submit" data-testid="button-save-routine"><Check size={15}/>{routine ? "Save changes" : "Save routine"}</button></div>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-2 border-t border-[hsl(var(--border))] pt-4">
+      <div className="flex flex-wrap gap-2">{onDelete && <button type="button" className={`${quietBtn} text-[hsl(var(--destructive))]`} onClick={onDelete} data-testid="button-delete-routine"><Trash2 size={14}/>{personalMode ? "Delete plan" : "Delete routine"}</button>}{!personalMode && <button type="button" className={quietBtn} onClick={asTemplate} data-testid="button-save-template"><BookmarkPlus size={14}/>Save as template</button>}</div>
+      <div className="ml-auto flex gap-2"><button type="button" className={quietBtn} onClick={onClose} data-testid="button-cancel-routine">Cancel</button><button className={primaryBtn} type="submit" data-testid="button-save-routine"><Check size={15}/>{routine ? "Save changes" : personalMode ? "Save plan" : "Save routine"}</button></div>
     </div>
   </form></Modal>;
 }

@@ -32,6 +32,7 @@ export function BackupRestoreDialog({ raw, onClose, onRestored }: {
   const [error, setError] = useState("");
   const currentSessions = floor.clients.reduce((n, c) => n + c.sessions.length, 0);
   const currentIndividualSessions = floor.individualProfile.sessions.length;
+  const currentIndividualPlans = floor.individualProfile.plans?.length ?? 0;
   const restore = () => {
     const failure = useFloor.getState().importBackup(raw);
     if (failure) { setError(failure); return; }
@@ -43,6 +44,7 @@ export function BackupRestoreDialog({ raw, onClose, onRestored }: {
         <dt>Clients</dt><dd>{result.preview.clients}</dd>
         <dt>Completed workouts</dt><dd>{result.preview.sessions}</dd>
         <dt>Personal workouts</dt><dd>{result.preview.data.individualProfile?.sessions.length ?? 0}</dd>
+        <dt>Personal workout plans</dt><dd>{result.preview.data.individualProfile?.plans?.length ?? 0}</dd>
         <dt>Custom exercises</dt><dd>{result.preview.custom}</dd>
         <dt>Reusable templates</dt><dd>{result.preview.templates}</dd>
         <dt>Unfinished workout</dt><dd>{result.preview.hasDraft ? "Included" : "None"}</dd>
@@ -52,8 +54,13 @@ export function BackupRestoreDialog({ raw, onClose, onRestored }: {
         This replaces {floor.clients.length} current clients and {currentSessions} trainer workouts,
         their routines, assignments and measurements, plus the current unfinished workout.
         {result.preview.preservesCurrentIndividualData
-          ? ` The v${result.preview.legacy ? "1" : "2"} backup does not contain personal-workout fields, so your ${currentIndividualSessions} personal workout${currentIndividualSessions === 1 ? "" : "s"} and current training mode are preserved.`
+          ? ` The v${result.preview.legacy ? "1" : "2"} backup does not contain personal-workout fields, so your ${currentIndividualSessions} personal workout${currentIndividualSessions === 1 ? "" : "s"}, ${currentIndividualPlans} personal plan${currentIndividualPlans === 1 ? "" : "s"} and current training mode are preserved.`
           : ` It also replaces personal workout history (${currentIndividualSessions} current; ${result.preview.data.individualProfile?.sessions.length ?? 0} in backup), training mode and theme preference.`}
+        {!result.preview.preservesCurrentIndividualData && result.preview.preservesCurrentIndividualPlans
+          ? ` This backup predates personal workout plans, so your ${currentIndividualPlans} current plan${currentIndividualPlans === 1 ? "" : "s"} are preserved.`
+          : !result.preview.preservesCurrentIndividualData
+            ? ` Personal plans are ${result.preview.preservesCurrentIndividualPlans ? "preserved" : "replaced"} (${currentIndividualPlans} current; ${result.preview.data.individualProfile?.plans?.length ?? 0} in backup).`
+            : ""}
         {result.preview.legacy
           ? " This older format contains no unfinished workout; the current draft will be cleared. Units stay unchanged. Custom exercises/templates stay unchanged only if absent from the file."
           : " Custom exercises, reusable templates and display units are also replaced."}

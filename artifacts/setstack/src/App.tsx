@@ -7,7 +7,6 @@ import {
   UserRound, Users, Weight, X, Zap,
 } from "lucide-react";
 import { useFloor, exercisePool } from "@/lib/gymmane/store";
-import type { CatalogExercise } from "@/lib/gymmane/catalog";
 import {
   INDIVIDUAL_PROFILE_ID,
   individualWorkoutOwner,
@@ -128,29 +127,6 @@ function Dashboard() {
   const hasPremium = billing.status === "lifetime" && billingController.hasLifetimeAccess();
   const [, setLocation] = useLocation();
   const [ask, confirmNode] = useConfirm();
-  const addPersonalExercise = (exercise: CatalogExercise) => {
-    const current = useFloor.getState().draft;
-    if (current && current.clientId !== INDIVIDUAL_PROFILE_ID) {
-      setNotice("A trainer workout is already active. Resume or finish it before starting a personal workout.");
-      return;
-    }
-    if (!current) startSession(INDIVIDUAL_PROFILE_ID, null);
-    const personalDraft = useFloor.getState().draft;
-    if (!personalDraft || personalDraft.clientId !== INDIVIDUAL_PROFILE_ID) {
-      setNotice("Could not start a personal workout. Your existing workout was left unchanged.");
-      return;
-    }
-    if (personalDraft.exercises.some((item) => item.id === exercise.id)) {
-      setNotice(`${exercise.name} is already in this workout.`);
-      window.dispatchEvent(new Event("setstack:resume-workout"));
-      return;
-    }
-    useFloor.getState().addDraftExercise(exercise);
-    const updatedDraft = useFloor.getState().draft;
-    if (!updatedDraft?.exercises.some((item) => item.id === exercise.id)) return;
-    window.dispatchEvent(new Event("setstack:resume-workout"));
-    setNotice(`${exercise.name} added to your personal workout.`);
-  };
   if (trainingMode === "individual") {
     return <>
       <Suspense fallback={<Card className="p-5"><p role="status" className="text-sm text-[hsl(var(--muted-foreground))]">Loading your training overview…</p></Card>}>
@@ -160,7 +136,20 @@ function Dashboard() {
           draft={draft}
           premium={hasPremium}
           onStartWorkout={() => startSession(INDIVIDUAL_PROFILE_ID, null)}
-          onAddExerciseToWorkout={addPersonalExercise}
+          onStartPlan={(routineId) => {
+            if (useFloor.getState().draft) {
+              setNotice("An unfinished workout is already active. Resume or finish it before starting a plan.");
+              window.dispatchEvent(new Event("setstack:resume-workout"));
+              return;
+            }
+            startSession(INDIVIDUAL_PROFILE_ID, routineId);
+            const started = useFloor.getState().draft;
+            if (!started || started.clientId !== INDIVIDUAL_PROFILE_ID || started.routineId !== routineId) {
+              setNotice("The plan could not be started. Your saved plan and existing workout data were left unchanged.");
+              return;
+            }
+            window.dispatchEvent(new Event("setstack:resume-workout"));
+          }}
           onUpgrade={() => setPaywall(true)}
           onOpenSettings={() => setLocation("/settings")}
           onEditSession={setEditSession}
