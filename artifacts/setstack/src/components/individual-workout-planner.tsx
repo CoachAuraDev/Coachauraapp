@@ -1,5 +1,5 @@
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Check, ChevronRight, ClipboardList, Dumbbell, Library, Pencil, Play, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, Check, ChevronRight, ClipboardList, Dumbbell, Library, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import { ExerciseLibrary } from "@/components/trainer-dashboard";
 import { Modal, primaryBtn, quietBtn } from "@/components/workout/shared";
 import { useFloor } from "@/lib/gymmane/store";

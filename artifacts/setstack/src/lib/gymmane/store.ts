@@ -209,6 +209,7 @@ export const useFloor = create<FloorState>()(
       },
       setIndividualScheduleDay: (weekday, entry) => {
         if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) return false;
+        if (entry !== null && entry.kind !== "rest" && entry.kind !== "workout") return false;
         const profile = get().individualProfile;
         if (entry?.kind === "workout" && !(profile.plans ?? []).some((plan) => plan.id === entry.routineId)) return false;
         const weeklySchedule = { ...(profile.weeklySchedule ?? {}) };

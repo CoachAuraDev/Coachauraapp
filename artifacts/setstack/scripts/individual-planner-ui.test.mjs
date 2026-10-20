@@ -197,14 +197,14 @@ test("personal workout plans can be built, edited, run, saved and deleted withou
   ));
   await page.click("tab-individual-exercises-library");
   await page.click(`button-select-library-exercise-${firstId}`);
-  await page.fill("input-new-plan-name", "TEST Push Day");
+  await page.fill("input-new-plan-name", "TEST Upper Day");
   await page.click("button-create-plan-with-exercise");
   await waitFor("created workout plan", () => page.evaluate(
     '!!document.querySelector(\'[data-testid="list-individual-plans"]\')',
   ));
   let state = await page.evaluate('JSON.parse(localStorage.getItem("setstack-v1")).state');
   let plan = state.individualProfile.plans.at(-1);
-  assert.equal(plan.name, "TEST Push Day");
+  assert.equal(plan.name, "TEST Upper Day");
   assert.deepEqual(plan.exerciseIds, [firstId]);
 
   await page.click("tab-individual-exercises-library");
@@ -224,11 +224,11 @@ test("personal workout plans can be built, edited, run, saved and deleted withou
   await waitFor("plan editor controls", () => page.evaluate(`!!document.querySelector('[data-testid="button-toggle-targets-${secondId}"]')`));
   await page.click(`button-toggle-targets-${secondId}`);
   await page.click(`button-move-exercise-up-${secondId}`);
-  await page.fill("input-routine-name", "TEST Upper Day");
+  await page.fill("input-routine-name", "TEST Push Day");
   await page.click("button-save-routine");
   state = await page.evaluate('JSON.parse(localStorage.getItem("setstack-v1")).state');
   plan = state.individualProfile.plans.find((item) => item.id === plan.id);
-  assert.equal(plan.name, "TEST Upper Day");
+  assert.equal(plan.name, "TEST Push Day");
   assert.deepEqual(plan.exerciseIds, [secondId, firstId]);
   assert.deepEqual(state.clients, []);
 
@@ -265,6 +265,8 @@ test("personal workout plans can be built, edited, run, saved and deleted withou
   assert.equal(state.individualProfile.weeklySchedule[2].routineId, legsPlan.id, "Tuesday is assigned to the Legs plan");
   assert.equal(state.individualProfile.weeklySchedule[restDay].kind, "rest", "Rest is explicit and distinct from unscheduled");
   assert.equal(state.individualProfile.weeklySchedule[unscheduledDay], undefined, "An untouched day remains unscheduled");
+  assert.equal(await page.evaluate(`document.querySelector('[data-testid="text-individual-schedule-status-${restDay}"]').textContent.trim()`), "Rest day");
+  assert.equal(await page.evaluate(`document.querySelector('[data-testid="text-individual-schedule-status-${unscheduledDay}"]').textContent.trim()`), "Unscheduled");
   assert.deepEqual(state.clients, []);
 
   await reloadAndWait(page, "individual-bottom-navigation");
@@ -321,6 +323,18 @@ test("personal workout plans can be built, edited, run, saved and deleted withou
   await waitFor("dashboard reacts to schedule edit", () => page.evaluate(
     `document.querySelector('[data-testid="card-todays-scheduled-workout"]')?.textContent.includes(${JSON.stringify(alternateTodayPlanName)})`,
   ));
+
+  await page.click("button-dashboard-open-weekly-schedule");
+  await page.fill(`select-individual-schedule-${todayWeekday}`, "rest");
+  await page.click("tab-individual-progress");
+  await waitFor("rest-day dashboard state", () => page.evaluate(
+    'document.querySelector(\'[data-testid="card-todays-scheduled-workout"]\')?.textContent.includes("Rest day")',
+  ));
+  await page.click("button-individual-start-workout");
+  assert.equal(await page.evaluate('document.querySelector(\'[data-testid="button-start-session-today"]\').disabled'), true,
+    "Today’s Workout cannot start on a scheduled rest day");
+  assert.ok((await page.evaluate('document.querySelector(\'[data-testid="text-no-todays-workout"]\')?.textContent')).includes("rest day"));
+  await page.click("button-close-dialog");
 
   await page.click("button-dashboard-open-weekly-schedule");
   await page.fill(`select-individual-schedule-${todayWeekday}`, "");
@@ -384,7 +398,8 @@ test("personal workout plans can be built, edited, run, saved and deleted withou
   await page.click(`button-delete-individual-plan-${plan.id}`);
   await page.click("button-confirm-delete-individual-plan");
   state = await page.evaluate('JSON.parse(localStorage.getItem("setstack-v1")).state');
-  assert.equal(state.individualProfile.plans.length, 0);
+  assert.deepEqual(state.individualProfile.plans.map((item) => item.id), [legsPlan.id],
+    "Deleting one plan leaves the other saved plan intact");
   assert.equal(state.individualProfile.sessions.length, 3, "Plan deletion does not remove completed personal workout history");
   assert.equal(Object.values(state.individualProfile.weeklySchedule).some((entry) => entry.kind === "workout" && entry.routineId === plan.id), false,
     "Deleting a plan clears only its remaining schedule assignments");

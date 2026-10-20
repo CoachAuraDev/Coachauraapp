@@ -224,6 +224,7 @@ test("TEST individual weekly schedule distinguishes workouts, rest days, and uns
   assert.equal(setDay(4, null), true);
   assert.equal(setDay(0 as 1, { kind: "rest" }), false, "Invalid weekdays are rejected");
   assert.equal(setDay(5, { kind: "workout", routineId: "missing-plan" }), false, "Missing personal plans cannot be scheduled");
+  assert.equal(setDay(5, { kind: "invalid" } as never), false, "Unsupported schedule entries are rejected");
 
   let profile = useFloor.getState().individualProfile;
   assert.deepEqual(profile.weeklySchedule, {

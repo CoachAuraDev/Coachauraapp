@@ -52,6 +52,12 @@ test("TEST full nested validation rejects malformed and incompatible backups wit
     ["excessive muscle target", (d) => { d.clients[0].muscleTargets = { chest: 101 }; }],
     ["unknown muscle target", (d) => { d.clients[0].muscleTargets = { imaginary: 4 } as never; }],
     ["non-numeric muscle target", (d) => { d.clients[0].muscleTargets = { chest: "4" } as never; }],
+    ["weekly schedule references a missing personal plan", (d) => {
+      d.individualProfile!.weeklySchedule = { 1: { kind: "workout", routineId: "missing-plan" } };
+    }],
+    ["weekly schedule contains an invalid day", (d) => {
+      d.individualProfile!.weeklySchedule = { 8: { kind: "rest" } } as never;
+    }],
   ];
   for (const [name, mutate] of mutations) {
     const data = fixture();
@@ -147,6 +153,7 @@ test("TEST version 2 restore preserves current personal history and training mod
   current.individualProfile = {
     restSeconds: 80,
     plans: [],
+    weeklySchedule: {},
     sessions: [{
       id: "personal-preserved", date: "2025-03-20", durationSec: 1200, name: "TEST preserved",
       routineId: null, exercises: [],
