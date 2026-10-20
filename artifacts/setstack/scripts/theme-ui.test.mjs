@@ -891,6 +891,7 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients, debugPor
     rpe: 10 - warmupRir,
     kind: "warmup",
   };
+  const savedWarmupId = storedWarmup.id;
   assert.deepEqual(storedWarmup, expectedWarmup,
     "The added warm-up must retain its entered load, reps, effort, and type");
   expectedWarmupBench.sets.push(expectedWarmup);
@@ -908,6 +909,72 @@ async function addSavedSetAndVerifyCharts(page, baseUrl, sourceClients, debugPor
     "All muscle totals must remain unchanged after reloading the saved warm-up");
   assert.deepEqual(await clientSnapshot("seed-leo"), warmupOtherBaseline,
     "Another client's charts must remain unchanged after reloading the warm-up");
+
+  await navigate(page, `${baseUrl}/settings`, "button-export-backup");
+  await page.evaluate(`(() => {
+    const createObjectURL = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (blob) => {
+      window.__coachauraWarmupBackupBlob = blob;
+      return createObjectURL(blob);
+    };
+  })()`);
+  await page.click("button-export-backup");
+  await waitFor("warm-up backup export confirmation", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="backup-export-confirmation"]\')',
+  ));
+  const exportedSet = await page.evaluate(`(async () => {
+    const blob = window.__coachauraWarmupBackupBlob;
+    if (!blob) return null;
+    const raw = await blob.text();
+    sessionStorage.setItem("test-coachaura-warmup-backup", raw);
+    const data = JSON.parse(raw);
+    return data.clients.flatMap((client) => client.sessions)
+      .flatMap((workout) => workout.exercises)
+      .flatMap((exercise) => exercise.sets)
+      .find((set) => set.id === "${savedWarmupId}") ?? null;
+  })()`);
+  assert.deepEqual(exportedSet, expectedWarmup,
+    "The existing export flow should include the warm-up's original type and values");
+  await page.click("button-backup-not-saved");
+
+  await page.evaluate(`(() => {
+    const stored = JSON.parse(localStorage.getItem("setstack-v1"));
+    const client = stored.state.clients.find((item) => item.id === "${fixture.id}");
+    const workout = client.sessions.find((item) => item.id === "${session.id}");
+    const set = workout.exercises.find((exercise) => exercise.id === "${bench.id}")
+      .sets.find((item) => item.id === "${savedWarmupId}");
+    Object.assign(set, { weight: 1, reps: 1, rpe: 1, kind: "normal" });
+    localStorage.setItem("setstack-v1", JSON.stringify(stored));
+  })()`);
+  await reloadAndWait(page, "settings after editing the current warm-up copy", "button-import-backup");
+  const selectedFile = await page.evaluate(`(() => {
+    const input = document.querySelector('[data-testid="input-backup-file"]');
+    const raw = sessionStorage.getItem("test-coachaura-warmup-backup");
+    if (!raw) return false;
+    const file = new File([raw], "coachaura-warmup-backup.json", {
+      type: "application/json",
+    });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    Object.defineProperty(input, "files", { configurable: true, value: transfer.files });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  })()`);
+  assert.equal(selectedFile, true, "The exported JSON should be selected through the existing restore file input");
+  await waitFor("warm-up backup restore preview", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="button-confirm-restore"]\')',
+  ));
+  await page.click("button-confirm-restore");
+  await waitFor("restored warm-up values", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === fixture.id);
+    return client?.sessions.find((item) => item.id === session.id)
+      ?.exercises.find((exercise) => exercise.id === bench.id)?.sets
+      .find((set) => set.id === savedWarmupId);
+  }, (set) => set?.kind === "warmup" && set.weight === warmupWeightKg &&
+    set.reps === warmupReps && set.rpe === 10 - warmupRir);
+  const restoredWarmupState = await storedState(page);
+  assert.deepEqual(restoredWarmupState.clients, expectedWarmupClients,
+    "Restoring the exported backup should recover the original saved workout and warm-up");
 }
 
 async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
