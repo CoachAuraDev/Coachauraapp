@@ -1,4 +1,4 @@
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -26,6 +26,7 @@ import {
 import { useFloor } from "@/lib/gymmane/store";
 import { BackupReminderCard, useBackupReminder } from "@/components/backup-reminder";
 import { kExercises, type CatalogExercise } from "@/lib/gymmane/catalog";
+import { Modal } from "@/components/workout/shared";
 import {
   formatLoad,
   todayIso,
@@ -46,7 +47,8 @@ import {
   type TrendMetric,
 } from "@/lib/gymmane/individual-analytics";
 import { MUSCLE_GROUPS, type MuscleGroup } from "@/lib/gymmane/muscle-activity";
-import { INDIVIDUAL_PROFILE_ID, individualWorkoutOwner, type Draft, type IndividualProfile, type SessionLog } from "@/lib/gymmane/models";
+import { INDIVIDUAL_PROFILE_ID, individualWorkoutOwner, type Draft, type IndividualProfile, type SessionLog, type WeekdayNumber } from "@/lib/gymmane/models";
+import { weekdayForLocalDate } from "@/lib/gymmane/weekly-schedule";
 
 const MuscleActivityDashboard = lazy(() => import("@/components/muscle-activity-dashboard").then((module) => ({ default: module.MuscleActivityDashboard })));
 const IndividualWorkoutPlanner = lazy(() => import("@/components/individual-workout-planner").then((module) => ({ default: module.IndividualWorkoutPlanner })));
@@ -89,6 +91,34 @@ function volumeLabel(volumeKg: number, unit: Unit) {
   return `${Math.round(value).toLocaleString()} ${unit}·reps`;
 }
 
+function useLocalToday() {
+  const [today, setToday] = useState(todayIso);
+  useEffect(() => {
+    let midnightTimer = 0;
+    const refresh = () => setToday(todayIso());
+    const scheduleNextLocalMidnight = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 1).getTime();
+      midnightTimer = window.setTimeout(() => {
+        refresh();
+        scheduleNextLocalMidnight();
+      }, Math.max(1000, nextMidnight - Date.now()));
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", onVisibility);
+    scheduleNextLocalMidnight();
+    return () => {
+      window.clearTimeout(midnightTimer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+  return today;
+}
+
 export function IndividualDashboard({
   profile,
   unit,
@@ -102,8 +132,12 @@ export function IndividualDashboard({
   onDeleteSession,
 }: IndividualDashboardProps) {
   type Tab = "progress" | "exercises" | "profile";
-  const today = todayIso();
+  const today = useLocalToday();
+  const todayWeekday: WeekdayNumber = weekdayForLocalDate(today);
   const [tab, setTab] = useState<Tab>("progress");
+  const [plannerSection, setPlannerSection] = useState<"library" | "plans">("library");
+  const [plannerPlansView, setPlannerPlansView] = useState<"plans" | "schedule">("plans");
+  const [startChoiceOpen, setStartChoiceOpen] = useState(false);
   const [range, setRange] = useState<IndividualRange>(30);
   const [strengthExerciseId, setStrengthExerciseId] = useState("");
   const [trendExerciseId, setTrendExerciseId] = useState("");
@@ -179,6 +213,33 @@ export function IndividualDashboard({
   const restSeconds = profile.restSeconds;
   const activeExerciseName = strengthOptions.find((option) => option.id === activeStrengthId)?.name ?? "";
   const totalTrendValue = trainingTrend.reduce((sum, point) => sum + trendValue(point, trendMetric, trendFilter), 0);
+  const todayEntry = profile.weeklySchedule?.[todayWeekday];
+  const todayPlan = todayEntry?.kind === "workout"
+    ? (profile.plans ?? []).find((plan) => plan.id === todayEntry.routineId)
+    : undefined;
+  const todayExercises = todayPlan?.exerciseIds.map((id) => library.find((exercise) => exercise.id === id)?.name ?? "Unavailable exercise") ?? [];
+  const openWeeklySchedule = () => {
+    setStartChoiceOpen(false);
+    setPlannerSection("plans");
+    setPlannerPlansView("schedule");
+    setTab("exercises");
+  };
+  const openStartChoices = () => {
+    if (draft) {
+      onStartWorkout();
+      return;
+    }
+    setStartChoiceOpen(true);
+  };
+  const startWingIt = () => {
+    setStartChoiceOpen(false);
+    onStartWorkout();
+  };
+  const startTodayWorkout = () => {
+    if (!todayPlan) return;
+    setStartChoiceOpen(false);
+    onStartPlan(todayPlan.id);
+  };
   return (
     <div className="min-w-0 space-y-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] [overflow-wrap:anywhere]" data-testid="individual-dashboard">
       {tab === "progress" && <>
@@ -191,10 +252,33 @@ export function IndividualDashboard({
             <p className={`mt-3 max-w-xl text-sm leading-relaxed ${muted}`}>A personal view of completed work, strength markers and the rhythm you are building.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={primaryButton} onClick={onStartWorkout} data-testid="button-individual-start-workout"><Play size={16} />{draft ? draft.clientId === INDIVIDUAL_PROFILE_ID ? "Continue session" : "Resume active session" : "Start session"}</button>
+            <button type="button" className={primaryButton} onClick={openStartChoices} data-testid="button-individual-start-workout"><Play size={16} />{draft ? draft.clientId === INDIVIDUAL_PROFILE_ID ? "Continue session" : "Resume active session" : "Start session"}</button>
           </div>
         </div>
       </header>
+
+      <section className={`${panel} flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between`} data-testid="card-todays-scheduled-workout" data-current-weekday={todayWeekday}>
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><CalendarDays size={18}/></span>
+          <div className="min-w-0">
+            <p className={kicker}>Today’s scheduled workout</p>
+            {todayPlan ? <>
+              <h2 className="display-font mt-1 truncate text-lg font-semibold">{todayPlan.name}</h2>
+              <p className={`mt-1 text-xs ${muted}`}>{todayExercises.slice(0, 3).join(" · ")}{todayExercises.length > 3 ? ` · +${todayExercises.length - 3} more` : ""}</p>
+            </> : todayEntry?.kind === "rest" ? <>
+              <h2 className="display-font mt-1 text-lg font-semibold">Rest day</h2>
+              <p className={`mt-1 text-xs ${muted}`}>Your weekly schedule marks today as a rest day.</p>
+            </> : todayEntry?.kind === "workout" ? <>
+              <h2 className="display-font mt-1 text-lg font-semibold">Plan unavailable</h2>
+              <p className={`mt-1 text-xs ${muted}`}>Update today’s assignment in the weekly schedule.</p>
+            </> : <>
+              <h2 className="display-font mt-1 text-lg font-semibold">No workout scheduled today</h2>
+              <p className={`mt-1 text-xs ${muted}`}>You can assign a plan or mark today as a rest day.</p>
+            </>}
+          </div>
+        </div>
+        <button type="button" className={quietButton} onClick={openWeeklySchedule} data-testid="button-dashboard-open-weekly-schedule"><CalendarDays size={15}/>View weekly schedule</button>
+      </section>
 
       {!draft && <BackupReminderCard
         hasLocalData={clients.length > 0 || profile.sessions.length > 0}
@@ -352,7 +436,16 @@ export function IndividualDashboard({
       </>}
 
       {tab === "exercises" && <Suspense fallback={<div className={panel} role="status">Opening exercises…</div>}>
-        <IndividualWorkoutPlanner profile={profile} draft={draft} onStartPlan={onStartPlan}/>
+        <IndividualWorkoutPlanner
+          profile={profile}
+          draft={draft}
+          section={plannerSection}
+          onSectionChange={setPlannerSection}
+          plansView={plannerPlansView}
+          onPlansViewChange={setPlannerPlansView}
+          todayWeekday={todayWeekday}
+          onStartPlan={onStartPlan}
+        />
       </Suspense>}
 
       {tab === "profile" && <>
@@ -399,6 +492,24 @@ export function IndividualDashboard({
           ]).map(({ id, label, Icon }) => <button key={id} type="button" aria-current={tab === id ? "page" : undefined} aria-pressed={tab === id} onClick={() => setTab(id)} className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[10px] font-semibold transition-colors ${tab === id ? "bg-[hsl(var(--accent))] text-[hsl(var(--primary))]" : `${muted} hover:bg-[hsl(var(--muted))]`}`} data-testid={`tab-individual-${id}`}><Icon size={18} aria-hidden="true"/><span>{label}</span></button>)}
         </div>
       </nav>
+      {startChoiceOpen && <Modal title="Start a session" onClose={() => setStartChoiceOpen(false)}>
+        <div className="space-y-3">
+          <button type="button" className={`${primaryButton} min-h-14 w-full justify-start`} onClick={startWingIt} data-testid="button-start-session-wing-it">
+            <Dumbbell size={17}/><span className="text-left"><span className="block">Wing It</span><span className="mt-0.5 block text-xs font-normal opacity-75">Start with a blank workout and add exercises as you go.</span></span>
+          </button>
+          <div className={`${panel} p-3`}>
+            <button type="button" disabled={!todayPlan} className={`${primaryButton} min-h-12 w-full justify-start`} onClick={startTodayWorkout} data-testid="button-start-session-today">
+              <CalendarDays size={17}/><span className="text-left"><span className="block">Today’s Workout</span><span className="mt-0.5 block text-xs font-normal opacity-75">{todayPlan ? todayPlan.name : "No workout scheduled today"}</span></span>
+            </button>
+            {todayPlan ? <p className={`mt-2 text-xs leading-relaxed ${muted}`} data-testid="text-todays-workout-preview">
+              {todayExercises.slice(0, 4).join(" · ")}{todayExercises.length > 4 ? ` · +${todayExercises.length - 4} more` : ""}
+            </p> : <div className="mt-2 space-y-2">
+              <p className={`text-xs ${muted}`} data-testid="text-no-todays-workout">{todayEntry?.kind === "rest" ? "Today is marked as a rest day. Choose a plan in the weekly planner if you want to train." : todayEntry?.kind === "workout" ? "The assigned plan is unavailable. Update the assignment before starting today’s workout." : "Assign a workout in the weekly planner first. This option will not start a blank session."}</p>
+              <button type="button" className={quietButton} onClick={openWeeklySchedule} data-testid="button-start-session-open-planner"><CalendarDays size={15}/>Open weekly planner</button>
+            </div>}
+          </div>
+        </div>
+      </Modal>}
     </div>
   );
 }

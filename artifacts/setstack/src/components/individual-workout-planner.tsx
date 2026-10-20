@@ -5,11 +5,20 @@ import { Modal, primaryBtn, quietBtn } from "@/components/workout/shared";
 import { useFloor } from "@/lib/gymmane/store";
 import { kExercises, type CatalogExercise } from "@/lib/gymmane/catalog";
 import { uid } from "@/lib/gymmane/engine";
-import { individualWorkoutOwner, type Draft, type IndividualProfile, type Routine } from "@/lib/gymmane/models";
+import {
+  individualWorkoutOwner,
+  type Draft,
+  type IndividualProfile,
+  type IndividualScheduleEntry,
+  type Routine,
+  type WeekdayNumber,
+} from "@/lib/gymmane/models";
+import { INDIVIDUAL_WEEKDAYS } from "@/lib/gymmane/weekly-schedule";
 
 const RoutineModal = lazy(() => import("@/components/workout/routine-editor").then((module) => ({ default: module.RoutineModal })));
 
 type Section = "library" | "plans";
+type PlansView = "plans" | "schedule";
 const kicker = "mono text-[10px] uppercase tracking-[.16em] text-[hsl(var(--muted-foreground))]";
 const muted = "text-[hsl(var(--muted-foreground))]";
 const panel = "rounded-2xl border border-[hsl(var(--card-border))] bg-[hsl(var(--card))] p-4 sm:p-5";
@@ -20,13 +29,22 @@ const quietButton = `${buttonBase} border border-[hsl(var(--border))] bg-[hsl(va
 export function IndividualWorkoutPlanner({
   profile,
   draft,
+  section,
+  onSectionChange,
+  plansView,
+  onPlansViewChange,
+  todayWeekday,
   onStartPlan,
 }: {
   profile: IndividualProfile;
   draft: Draft | null;
+  section: Section;
+  onSectionChange: (section: Section) => void;
+  plansView: PlansView;
+  onPlansViewChange: (view: PlansView) => void;
+  todayWeekday: WeekdayNumber;
   onStartPlan: (routineId: string) => void;
 }) {
-  const [section, setSection] = useState<Section>("library");
   const [selectedExercise, setSelectedExercise] = useState<CatalogExercise | null>(null);
   const [newPlanName, setNewPlanName] = useState("");
   const [addError, setAddError] = useState("");
@@ -38,6 +56,7 @@ export function IndividualWorkoutPlanner({
   const custom = useFloor((state) => state.custom);
   const savePlan = useFloor((state) => state.saveIndividualPlan);
   const deletePlanFromStore = useFloor((state) => state.deleteIndividualPlan);
+  const setScheduleDay = useFloor((state) => state.setIndividualScheduleDay);
   const setNotice = useFloor((state) => state.setNotice);
   const pool = useMemo(() => [...kExercises, ...custom], [custom]);
   const names = useMemo(() => new Map(pool.map((exercise) => [exercise.id, exercise.name])), [pool]);
@@ -64,7 +83,7 @@ export function IndividualWorkoutPlanner({
     setNotice(`${selectedExercise.name} added to ${plan.name}.`);
     setSelectedExercise(null);
     setAddError("");
-    setSection("plans");
+    onSectionChange("plans");
   };
 
   const createPlanWithExercise = () => {
@@ -89,7 +108,19 @@ export function IndividualWorkoutPlanner({
     setNewPlanName("");
     setSelectedExercise(null);
     setAddError("");
-    setSection("plans");
+    onSectionChange("plans");
+  };
+  const updateScheduleDay = (weekday: WeekdayNumber, value: string) => {
+    let entry: IndividualScheduleEntry | null = null;
+    if (value === "rest") entry = { kind: "rest" };
+    else if (value.startsWith("plan:")) entry = { kind: "workout", routineId: value.slice(5) };
+    if (!setScheduleDay(weekday, entry)) {
+      setNotice("The weekly schedule could not be saved. Your previous schedule is unchanged.");
+      return;
+    }
+    const dayName = INDIVIDUAL_WEEKDAYS.find((day) => day.day === weekday)?.label ?? "Day";
+    const planName = entry?.kind === "workout" ? plans.find((plan) => plan.id === entry.routineId)?.name : undefined;
+    setNotice(value === "rest" ? `${dayName} set as a rest day.` : planName ? `${dayName} set to ${planName}.` : `${dayName} is now unscheduled.`);
   };
 
   const openCreate = () => {
@@ -116,7 +147,7 @@ export function IndividualWorkoutPlanner({
       {([
         { id: "library" as const, label: "Exercise Library", Icon: Library },
         { id: "plans" as const, label: "My Workout Plans", Icon: ClipboardList },
-      ]).map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => setSection(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold sm:text-sm ${section === id ? "bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm" : muted}`} data-testid={`tab-individual-exercises-${id}`}><Icon size={16} aria-hidden="true"/>{label}{id === "plans" && <span className="mono text-[10px]">{plans.length}</span>}</button>)}
+      ]).map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-selected={section === id} onClick={() => onSectionChange(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold sm:text-sm ${section === id ? "bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm" : muted}`} data-testid={`tab-individual-exercises-${id}`}><Icon size={16} aria-hidden="true"/>{label}{id === "plans" && <span className="mono text-[10px]">{plans.length}</span>}</button>)}
     </div>
 
     {section === "library" ? <>
@@ -133,7 +164,13 @@ export function IndividualWorkoutPlanner({
         <div><p className={kicker}>Your training</p><h2 className="display-font mt-1 text-2xl font-semibold">My Workout Plans</h2><p className={`mt-1 text-sm ${muted}`}>Plans are saved separately from completed workouts.</p></div>
         <button type="button" className={primaryButton} onClick={openCreate} data-testid="button-create-individual-plan"><Plus size={16}/>Create Workout Plan</button>
       </div>
-      {plans.length ? <div className="space-y-3" data-testid="list-individual-plans">
+      <div role="tablist" aria-label="Workout planner views" className="grid grid-cols-2 gap-1 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))] p-1" data-testid="individual-plan-views">
+        {([
+          { id: "plans" as const, label: "My Plans", Icon: ClipboardList },
+          { id: "schedule" as const, label: "Weekly Schedule", Icon: CalendarDays },
+        ]).map(({ id, label, Icon }) => <button key={id} type="button" role="tab" aria-selected={plansView === id} onClick={() => onPlansViewChange(id)} className={`flex min-h-11 items-center justify-center gap-2 rounded-lg px-2 text-xs font-semibold sm:text-sm ${plansView === id ? "bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm" : muted}`} data-testid={`tab-individual-planner-${id}`}><Icon size={16} aria-hidden="true"/>{label}</button>)}
+      </div>
+      {plansView === "plans" && (plans.length ? <div className="space-y-3" data-testid="list-individual-plans">
         {plans.map((plan) => <article key={plan.id} className={panel} data-testid={`card-individual-plan-${plan.id}`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--accent))] text-[hsl(var(--primary))]"><Dumbbell size={18}/></span>
@@ -153,7 +190,44 @@ export function IndividualWorkoutPlanner({
         <h3 className="display-font mt-2 text-lg font-semibold">No workout plans yet</h3>
         <p className={`mx-auto mt-1 max-w-sm text-sm ${muted}`}>Build a reusable exercise list, then start a workout without changing the saved plan.</p>
         <button type="button" className={`${primaryButton} mt-4`} onClick={openCreate} data-testid="button-empty-create-individual-plan"><Plus size={16}/>Create Workout Plan</button>
-      </div>}
+      </div>)}
+      {plansView === "schedule" && <section className="space-y-3" aria-label="Weekly workout schedule" data-testid="individual-weekly-schedule">
+        <div className={`${panel} border-dashed`}>
+          <p className="text-sm font-semibold">Set up your week</p>
+          <p className={`mt-1 text-xs leading-relaxed ${muted}`}>Choose a saved plan, mark a rest day, or leave a day unscheduled. The same plan can be used on multiple days.</p>
+        </div>
+        {plans.length === 0 && <div className={`${panel} border-dashed text-center`} data-testid="empty-individual-schedule-plans">
+          <p className="text-sm font-semibold">Create a plan before scheduling workouts</p>
+          <p className={`mt-1 text-xs ${muted}`}>Your schedule stays separate from completed workout history.</p>
+          <button type="button" className={`${primaryButton} mt-3`} onClick={openCreate} data-testid="button-schedule-create-plan"><Plus size={15}/>Create Workout Plan</button>
+        </div>}
+        <div className="space-y-2" data-testid="list-individual-schedule-days">
+          {INDIVIDUAL_WEEKDAYS.map(({ day, label }) => {
+            const entry = profile.weeklySchedule?.[day];
+            const value = entry?.kind === "rest" ? "rest" : entry?.kind === "workout" ? `plan:${entry.routineId}` : "";
+            const plan = entry?.kind === "workout" ? plans.find((item) => item.id === entry.routineId) : undefined;
+            const status = entry?.kind === "rest" ? "Rest day" : plan?.name ?? (entry?.kind === "workout" ? "Plan unavailable" : "Unscheduled");
+            return <div key={day} className={`${panel} flex flex-col gap-3 p-3 sm:flex-row sm:items-center`} data-testid={`row-individual-schedule-${day}`} data-schedule-kind={entry?.kind ?? "unscheduled"}>
+              <div className="flex min-w-0 items-center gap-2 sm:w-32">
+                <span className={`text-sm font-semibold ${day === todayWeekday ? "text-[hsl(var(--primary))]" : ""}`}>{label}</span>
+                {day === todayWeekday && <span className="rounded-full bg-[hsl(var(--accent))] px-2 py-1 text-[9px] font-bold text-[hsl(var(--primary))]">TODAY</span>}
+              </div>
+              <div className={`min-w-0 flex-1 text-xs ${entry?.kind === "workout" ? "font-semibold text-[hsl(var(--foreground))]" : muted}`} data-testid={`text-individual-schedule-status-${day}`}>{status}</div>
+              <select
+                aria-label={`${label} schedule`}
+                className="min-h-11 min-w-0 rounded-xl border border-[hsl(var(--input))] bg-[hsl(var(--background))] px-3 text-sm sm:w-64"
+                value={value}
+                onChange={(event) => updateScheduleDay(day, event.target.value)}
+                data-testid={`select-individual-schedule-${day}`}
+              >
+                <option value="">Unscheduled</option>
+                <option value="rest">Rest day</option>
+                {plans.map((item) => <option key={item.id} value={`plan:${item.id}`}>{item.name}</option>)}
+              </select>
+            </div>;
+          })}
+        </div>
+      </section>}
       {draft && <p className={`rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-3 text-xs leading-relaxed ${muted}`} role="status" data-testid="text-plan-active-workout">An unfinished workout is already active. Starting a plan will resume it; finish or explicitly discard it before starting another.</p>}
     </>}
 

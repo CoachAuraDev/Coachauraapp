@@ -80,11 +80,18 @@ export type Client = {
 /** Stable owner ID keeps individual sessions distinct from every trainer-managed client. */
 export const INDIVIDUAL_PROFILE_ID = "__coachaura_individual__";
 export type TrainingMode = "trainer" | "individual";
+export type WeekdayNumber = 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type IndividualScheduleEntry =
+  | { kind: "workout"; routineId: string }
+  | { kind: "rest" };
+export type IndividualWeeklySchedule = Partial<Record<WeekdayNumber, IndividualScheduleEntry>>;
 export type IndividualProfile = {
   restSeconds: number;
   sessions: SessionLog[];
   /** Personal workout plans are separate from trainer-client routines. */
   plans?: Routine[];
+  /** Missing days are unscheduled; explicit rest entries are distinct. */
+  weeklySchedule?: IndividualWeeklySchedule;
 };
 /** The smallest shared shape needed by workout logging and saved-session analytics. */
 export type WorkoutOwner = Pick<Client, "id" | "name" | "restSeconds" | "sessions" | "routines">;

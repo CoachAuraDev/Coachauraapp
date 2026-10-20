@@ -6,8 +6,10 @@ import {
   type Client,
   type Draft,
   type IndividualProfile,
+  type IndividualWeeklySchedule,
   type Routine,
   type TrainingMode,
+  type WeekdayNumber,
 } from "./models.ts";
 import type { MuscleTargetGroup } from "./models.ts";
 import { MUSCLE_TARGET_GROUPS } from "./client-overview.ts";
@@ -36,6 +38,8 @@ export type BackupPreview = {
   legacy: boolean;
   preservesCurrentIndividualData: boolean;
   preservesCurrentIndividualPlans: boolean;
+  preservesCurrentIndividualSchedule: boolean;
+  droppedCurrentScheduleDays: number;
 };
 export type BackupResult = { ok: true; preview: BackupPreview } | { ok: false; error: string };
 
@@ -151,10 +155,32 @@ export function validateSavedFloor(value: unknown): SavedFloor {
     throw new Error("workspace.trainingMode: unsupported mode.");
   }
   const savedIndividual = floor.individualProfile === undefined
-    ? { restSeconds: 90, sessions: [], plans: [] }
+    ? { restSeconds: 90, sessions: [], plans: [], weeklySchedule: {} }
     : record(floor.individualProfile, "individualProfile");
   number(savedIndividual.restSeconds, "individualProfile.restSeconds");
   const individualPlans = routines(savedIndividual.plans === undefined ? [] : savedIndividual.plans, "individualProfile.plans");
+  const savedSchedule = record(
+    savedIndividual.weeklySchedule === undefined ? {} : savedIndividual.weeklySchedule,
+    "individualProfile.weeklySchedule",
+  );
+  const individualPlanIds = new Set(individualPlans.map((plan) => plan.id));
+  const weeklySchedule: IndividualWeeklySchedule = {};
+  for (const [day, rawEntry] of Object.entries(savedSchedule)) {
+    if (!/^[1-7]$/.test(day)) throw new Error(`individualProfile.weeklySchedule: invalid weekday ${day}.`);
+    const entry = record(rawEntry, `individualProfile.weeklySchedule.${day}`);
+    const weekday = Number(day) as WeekdayNumber;
+    if (entry.kind === "rest") {
+      weeklySchedule[weekday] = { kind: "rest" };
+    } else if (entry.kind === "workout") {
+      const routineId = text(entry.routineId, `individualProfile.weeklySchedule.${day}.routineId`);
+      if (!individualPlanIds.has(routineId)) {
+        throw new Error(`individualProfile.weeklySchedule.${day}: scheduled personal plan does not exist.`);
+      }
+      weeklySchedule[weekday] = { kind: "workout", routineId };
+    } else {
+      throw new Error(`individualProfile.weeklySchedule.${day}: unsupported schedule entry.`);
+    }
+  }
   const individualSessions = objects(savedIndividual.sessions, "individualProfile.sessions").map((session, index) => {
     const path = `individualProfile.sessions[${index}]`;
     date(session.date, `${path}.date`);
@@ -168,6 +194,7 @@ export function validateSavedFloor(value: unknown): SavedFloor {
     restSeconds: savedIndividual.restSeconds as number,
     sessions: individualSessions as unknown as IndividualProfile["sessions"],
     plans: individualPlans,
+    weeklySchedule,
   };
   const clients = objects(floor.clients, "clients").map((c, i) => {
     const p = `clients[${i}]`;
@@ -307,14 +334,18 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
       clients: current.clients, custom: current.custom, templates: current.templates,
       draft: current.draft, unit: current.unit, appearance: current.appearance,
       trainingMode: current.trainingMode ?? "trainer",
-      individualProfile: current.individualProfile ?? { restSeconds: 90, sessions: [] },
+      individualProfile: current.individualProfile ?? { restSeconds: 90, sessions: [], plans: [], weeklySchedule: {} },
     };
     let legacy = true;
     let preservesCurrentIndividualData = false;
     let preservesCurrentIndividualPlans = false;
+    let preservesCurrentIndividualSchedule = false;
+    let droppedCurrentScheduleDays = 0;
     let candidate: unknown;
     if (Array.isArray(parsed)) {
       preservesCurrentIndividualData = true;
+      preservesCurrentIndividualPlans = true;
+      preservesCurrentIndividualSchedule = true;
       candidate = { ...baseline, clients: parsed, draft: null };
     } else {
       const body = record(parsed, "backup");
@@ -337,31 +368,60 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
       if (body.version === 3) {
         const savedProfile = record(body.individualProfile, "individualProfile");
         preservesCurrentIndividualPlans = !("plans" in savedProfile);
+        preservesCurrentIndividualSchedule = !("weeklySchedule" in savedProfile);
       } else {
         preservesCurrentIndividualPlans = true;
+        preservesCurrentIndividualSchedule = true;
       }
-      candidate = legacy
-        ? { ...baseline, clients: body.clients, custom: "custom" in body ? body.custom : current.custom, templates: "templates" in body ? body.templates : current.templates, draft: null }
-        : body.version === 2
-          ? {
-            ...baseline,
-            clients: body.clients,
-            custom: body.custom,
-            templates: body.templates,
-            draft: body.draft,
-            unit: body.unit,
-            appearance: body.appearance ?? baseline.appearance,
-          }
-          : body.version === 3 && preservesCurrentIndividualPlans
-            ? {
-              ...baseline,
-              ...body,
-              individualProfile: {
-                ...record(body.individualProfile, "individualProfile"),
-                plans: baseline.individualProfile?.plans ?? [],
-              },
+      if (legacy) {
+        candidate = {
+          ...baseline,
+          clients: body.clients,
+          custom: "custom" in body ? body.custom : current.custom,
+          templates: "templates" in body ? body.templates : current.templates,
+          draft: null,
+        };
+      } else if (body.version === 2) {
+        candidate = {
+          ...baseline,
+          clients: body.clients,
+          custom: body.custom,
+          templates: body.templates,
+          draft: body.draft,
+          unit: body.unit,
+          appearance: body.appearance ?? baseline.appearance,
+        };
+      } else {
+        const savedProfile = record(body.individualProfile, "individualProfile");
+        const plans = preservesCurrentIndividualPlans
+          ? baseline.individualProfile?.plans ?? []
+          : routines(savedProfile.plans, "individualProfile.plans");
+        let schedule = savedProfile.weeklySchedule;
+        if (preservesCurrentIndividualSchedule) {
+          const currentSchedule = baseline.individualProfile?.weeklySchedule ?? {};
+          const availablePlanIds = new Set(plans.map((plan) => plan.id));
+          const retained: Record<string, unknown> = {};
+          for (const [day, rawEntry] of Object.entries(currentSchedule)) {
+            if (rawEntry?.kind === "rest") {
+              retained[day] = { kind: "rest" };
+            } else if (rawEntry?.kind === "workout" && availablePlanIds.has(rawEntry.routineId)) {
+              retained[day] = { kind: "workout", routineId: rawEntry.routineId };
+            } else {
+              droppedCurrentScheduleDays += 1;
             }
-            : { ...baseline, ...body };
+          }
+          schedule = retained;
+        }
+        candidate = {
+          ...baseline,
+          ...body,
+          individualProfile: {
+            ...savedProfile,
+            plans,
+            weeklySchedule: schedule ?? {},
+          },
+        };
+      }
     }
     const data = validateSavedFloor(candidate);
     return { ok: true, preview: {
@@ -370,6 +430,8 @@ export function inspectBackup(raw: string, current: SavedFloor): BackupResult {
       hasDraft: data.draft !== null,
       preservesCurrentIndividualData,
       preservesCurrentIndividualPlans,
+      preservesCurrentIndividualSchedule,
+      droppedCurrentScheduleDays,
     } };
   } catch (error) {
     return { ok: false, error: error instanceof SyntaxError ? "That file is not valid JSON." : error instanceof Error ? error.message : "Invalid backup." };

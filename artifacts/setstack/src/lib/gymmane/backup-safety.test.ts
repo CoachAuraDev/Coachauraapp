@@ -12,7 +12,7 @@ function fixture(): SavedFloor {
   return {
     clients: seedClients().map((c, i) => ({ ...c, name: `TEST Client ${i}` })),
     custom: [], templates: [], draft: null, unit: "kg", appearance: DEFAULT_APPEARANCE,
-    trainingMode: "trainer", individualProfile: { restSeconds: 90, sessions: [], plans: [] },
+    trainingMode: "trainer", individualProfile: { restSeconds: 90, sessions: [], plans: [], weeklySchedule: {} },
   };
 }
 function reject(data: unknown, pattern: RegExp) {
@@ -70,6 +70,10 @@ test("TEST version 3 roundtrip preserves personal mode, sessions, exact loads an
   source.individualProfile = {
     restSeconds: 75,
     plans: [personalPlan],
+    weeklySchedule: {
+      1: { kind: "workout", routineId: personalPlan.id },
+      3: { kind: "rest" },
+    },
     sessions: [{
       id: "personal-test-session",
       date: "2025-03-20",
@@ -160,18 +164,47 @@ test("TEST version 2 restore preserves current personal history and training mod
   }
 });
 
-test("TEST older version-3 backup without personal plans preserves current plans safely", () => {
+test("TEST older version-3 backup without personal plans or schedule preserves current personal data safely", () => {
   const current = fixture();
   const plan = structuredClone(current.clients[0].routines[0]);
   plan.id = "current-personal-plan";
   current.individualProfile!.plans = [plan];
+  current.individualProfile!.weeklySchedule = {
+    1: { kind: "workout", routineId: plan.id },
+    3: { kind: "rest" },
+  };
   const oldVersion3 = fixture();
   delete (oldVersion3.individualProfile as Partial<NonNullable<typeof oldVersion3.individualProfile>>).plans;
+  delete (oldVersion3.individualProfile as Partial<NonNullable<typeof oldVersion3.individualProfile>>).weeklySchedule;
   const result = inspectBackup(JSON.stringify({ app: "CoachAura", version: 3, ...oldVersion3 }), current);
   assert.ok(result.ok);
   if (result.ok) {
     assert.equal(result.preview.preservesCurrentIndividualPlans, true);
+    assert.equal(result.preview.preservesCurrentIndividualSchedule, true);
+    assert.equal(result.preview.droppedCurrentScheduleDays, 0);
     assert.deepEqual(result.preview.data.individualProfile?.plans, [plan]);
+    assert.deepEqual(result.preview.data.individualProfile?.weeklySchedule, current.individualProfile!.weeklySchedule);
+  }
+});
+
+test("TEST an older backup cannot leave personal schedule references to plans it replaces", () => {
+  const current = fixture();
+  const oldPlan = structuredClone(current.clients[0].routines[0]);
+  oldPlan.id = "current-scheduled-plan";
+  current.individualProfile!.plans = [oldPlan];
+  current.individualProfile!.weeklySchedule = { 1: { kind: "workout", routineId: oldPlan.id } };
+
+  const backup = fixture();
+  const restoredPlan = structuredClone(backup.clients[0].routines[0]);
+  restoredPlan.id = "restored-plan";
+  backup.individualProfile!.plans = [restoredPlan];
+  delete backup.individualProfile!.weeklySchedule;
+  const result = inspectBackup(JSON.stringify({ app: "CoachAura", version: 3, ...backup }), current);
+  assert.ok(result.ok);
+  if (result.ok) {
+    assert.equal(result.preview.preservesCurrentIndividualSchedule, true);
+    assert.equal(result.preview.droppedCurrentScheduleDays, 1);
+    assert.deepEqual(result.preview.data.individualProfile?.weeklySchedule, {});
   }
 });
 test("TEST incomplete or out-of-range pending input survives backup without becoming a logged set", () => {

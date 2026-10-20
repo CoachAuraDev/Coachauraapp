@@ -203,3 +203,48 @@ test("TEST personal plans preload ordered exercises, save separately, and surviv
   assert.equal(backup.ok, true);
   resetStore();
 });
+
+test("TEST individual weekly schedule distinguishes workouts, rest days, and unscheduled days; persists separately", async () => {
+  const client = testClient();
+  client.routines = [{
+    id: "trainer-plan", name: "TEST client plan", group: "Client", exerciseIds: [row.id],
+    sets: { [row.id]: 2 }, plan: {}, rest: {},
+  }];
+  resetStore(client);
+  const plan: Routine = {
+    id: "personal-week-plan", name: "TEST Push", group: "Personal", exerciseIds: [bench.id],
+    sets: { [bench.id]: 3 }, plan: { [bench.id]: [{ reps: 8, weightKg: 50, kind: "normal" }] },
+    rest: { [bench.id]: 90 },
+  };
+  assert.equal(useFloor.getState().saveIndividualPlan(plan), true);
+  const setDay = useFloor.getState().setIndividualScheduleDay;
+  assert.equal(setDay(1, { kind: "workout", routineId: plan.id }), true);
+  assert.equal(setDay(2, { kind: "workout", routineId: plan.id }), true, "A plan can be assigned to multiple days");
+  assert.equal(setDay(3, { kind: "rest" }), true);
+  assert.equal(setDay(4, null), true);
+  assert.equal(setDay(0 as 1, { kind: "rest" }), false, "Invalid weekdays are rejected");
+  assert.equal(setDay(5, { kind: "workout", routineId: "missing-plan" }), false, "Missing personal plans cannot be scheduled");
+
+  let profile = useFloor.getState().individualProfile;
+  assert.deepEqual(profile.weeklySchedule, {
+    1: { kind: "workout", routineId: plan.id },
+    2: { kind: "workout", routineId: plan.id },
+    3: { kind: "rest" },
+  });
+  assert.deepEqual(useFloor.getState().clients[0].routines.map((routine) => routine.id), ["trainer-plan"]);
+  assert.equal(profile.sessions.length, 0);
+
+  await useFloor.persist.rehydrate();
+  profile = useFloor.getState().individualProfile;
+  assert.deepEqual(profile.weeklySchedule, {
+    1: { kind: "workout", routineId: plan.id },
+    2: { kind: "workout", routineId: plan.id },
+    3: { kind: "rest" },
+  }, "Schedule persists after a store rehydration");
+
+  assert.equal(useFloor.getState().deleteIndividualPlan(plan.id), true);
+  assert.deepEqual(useFloor.getState().individualProfile.weeklySchedule, { 3: { kind: "rest" } },
+    "Removing a plan clears only days assigned to that plan and keeps rest days");
+  assert.deepEqual(useFloor.getState().clients[0].routines.map((routine) => routine.id), ["trainer-plan"]);
+  resetStore();
+});

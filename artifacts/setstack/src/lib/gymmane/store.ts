@@ -13,10 +13,12 @@ import {
   type DraftEntry,
   type ExerciseLog,
   type IndividualProfile,
+  type IndividualScheduleEntry,
   type Routine,
   type SessionLog,
   type SetLog,
   type TrainingMode,
+  type WeekdayNumber,
   type WorkoutOwner,
 } from "./models.ts";
 import { validLoggedSet, validSessionEdit } from "./workout-logging.ts";
@@ -50,6 +52,7 @@ type FloorState = {
   saveRoutine: (clientId: string, routine: Routine) => void;
   saveIndividualPlan: (routine: Routine) => boolean;
   deleteIndividualPlan: (routineId: string) => boolean;
+  setIndividualScheduleDay: (weekday: WeekdayNumber, entry: IndividualScheduleEntry | null) => boolean;
   saveTemplate: (routine: Routine) => void;
   deleteTemplate: (id: string) => void;
   assignTemplate: (clientId: string, templateId: string) => void;
@@ -113,7 +116,7 @@ export const useFloor = create<FloorState>()(
       // Demo data remains opt-in in Settings. Never substitute it for a failed read.
       clients: typeof window === "undefined" ? seedClients() : [],
       trainingMode: "trainer",
-      individualProfile: { restSeconds: 90, sessions: [], plans: [] },
+      individualProfile: { restSeconds: 90, sessions: [], plans: [], weeklySchedule: {} },
       unit: "kg",
       appearance: DEFAULT_APPEARANCE,
       draft: null,
@@ -185,8 +188,34 @@ export const useFloor = create<FloorState>()(
         const profile = get().individualProfile;
         const plans = profile.plans ?? [];
         if (!plans.some((item) => item.id === routineId)) return false;
+        const weeklySchedule = Object.fromEntries(
+          Object.entries(profile.weeklySchedule ?? {}).filter(([, entry]) =>
+            entry?.kind !== "workout" || entry.routineId !== routineId,
+          ),
+        ) as IndividualProfile["weeklySchedule"];
         try {
-          set({ individualProfile: { ...profile, plans: plans.filter((item) => item.id !== routineId) } });
+          set({
+            individualProfile: {
+              ...profile,
+              plans: plans.filter((item) => item.id !== routineId),
+              weeklySchedule,
+            },
+          });
+          return true;
+        } catch (error) {
+          if (error instanceof PersistenceFailure) return false;
+          throw error;
+        }
+      },
+      setIndividualScheduleDay: (weekday, entry) => {
+        if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) return false;
+        const profile = get().individualProfile;
+        if (entry?.kind === "workout" && !(profile.plans ?? []).some((plan) => plan.id === entry.routineId)) return false;
+        const weeklySchedule = { ...(profile.weeklySchedule ?? {}) };
+        if (entry === null) delete weeklySchedule[weekday];
+        else weeklySchedule[weekday] = structuredClone(entry);
+        try {
+          set({ individualProfile: { ...profile, weeklySchedule } });
           return true;
         } catch (error) {
           if (error instanceof PersistenceFailure) return false;
