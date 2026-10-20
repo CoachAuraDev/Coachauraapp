@@ -453,6 +453,7 @@ function parseContributorDetails(contributor) {
 async function verifyLastRecentWorkoutCorrection(page, baseUrl, fixtureClient) {
   const [session] = fixtureClient.sessions;
   assert.equal(fixtureClient.sessions.length, 1, "The isolated chart fixture must contain one historical workout");
+  session.date = todayIso();
   const fixtureId = fixtureClient.id;
   const sessionId = session.id;
   await page.evaluate(`(() => {
@@ -1268,6 +1269,146 @@ async function correctSavedLoadAndVerifyStrengthHistory(page, baseUrl) {
     chest: await muscleSnapshot("chest"),
     triceps: await muscleSnapshot("triceps"),
   }, afterMuscles, "Chest and triceps set counts should remain stable after reload");
+}
+
+async function enforceSavedLoadCeilingAndVerifyStrengthHistory(page, baseUrl) {
+  const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
+  assert.ok(originalStorage, "The original browser fixture should be available for restoration");
+  const sourceState = JSON.parse(originalStorage).state;
+  const sourceClient = sourceState.clients.find((client) => client.id === "seed-amina");
+  const sourceSession = sourceClient?.sessions.find((item) => item.id === "seed-amina-0");
+  const sourceBench = sourceSession?.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(sourceClient && sourceSession && sourceBench, "The fixture should contain a saved bench workout");
+
+  const fixture = structuredClone(sourceClient);
+  fixture.id = "test-saved-load-ceiling";
+  fixture.name = "Saved load ceiling fixture";
+  fixture.sessions = [structuredClone(sourceSession)];
+  const session = fixture.sessions[0];
+  session.id = `${fixture.id}-session`;
+  session.date = todayIso();
+  const bench = session.exercises.find((exercise) => exercise.id === sourceBench.id);
+  assert.ok(bench, "The fixture workout should retain the bench exercise");
+  const workingSet = bench.sets.find((set) => set.kind !== "warmup" && set.reps > 0);
+  assert.ok(workingSet, "The fixture should contain a working set to edit");
+  const unit = sourceState.unit;
+  const displayMaximum = Number(toDisplay(1_000, unit).toFixed(2));
+  const inputId = `input-editor-weight-${workingSet.id}`;
+
+  const readEstimate = async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === fixture.id);
+    const savedSession = client?.sessions.find((item) => item.id === session.id);
+    const savedBench = savedSession?.exercises.find((exercise) => exercise.id === bench.id);
+    assert.ok(savedBench, "The saved workout should retain its bench exercise");
+    const estimates = savedBench.sets
+      .filter((set) => set.kind !== "warmup" && set.reps > 0)
+      .map((set) => oneRm(set.reps, set.weight, set.rpe));
+    assert.ok(estimates.length > 0 && estimates.every(Number.isFinite),
+      "Every derived strength-chart value should remain finite");
+    return {
+      session: savedSession,
+      bench: savedBench,
+      estimate: Math.max(...estimates),
+    };
+  };
+
+  const assertChart = async (description) => {
+    await navigate(page, `${baseUrl}/clients/${fixture.id}?tab=muscles`, "dashboard-muscle-activity");
+    await page.fill("select-client-strength-exercise", bench.id);
+    const saved = await readEstimate();
+    const shown = await waitFor(description, () => page.evaluate(
+      'document.querySelector(\'[data-testid="text-client-current-estimate"]\')?.textContent.trim()',
+    ));
+    assert.equal(shown, formatLoad(saved.estimate, unit),
+      "The strength chart's visible estimate should match its finite saved-set calculation");
+    return saved;
+  };
+
+  try {
+    const isolatedStore = JSON.parse(originalStorage);
+    isolatedStore.state.clients.push(fixture);
+    await page.evaluate(`(() => {
+      localStorage.setItem("setstack-v1", ${JSON.stringify(JSON.stringify(isolatedStore))});
+      history.replaceState(null, "", ${JSON.stringify(`${baseUrl}/clients/${fixture.id}?tab=muscles`)});
+    })()`);
+    await reloadAndWait(page, "isolated saved-load ceiling fixture", "dashboard-muscle-activity");
+    await page.fill("select-client-strength-exercise", bench.id);
+
+    await openSavedSessionEditor(page, baseUrl, session.id, fixture.id);
+    const expanded = await page.evaluate(`(() => {
+      const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+      const toggle = section?.querySelector("button[aria-expanded]");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return !!toggle;
+    })()`);
+    assert.equal(expanded, true, "Expand the working-set load input");
+    assert.equal(await page.evaluate(
+      `document.querySelector('[data-testid="${inputId}"]')?.max`,
+    ), String(displayMaximum), "The input should expose the same unit-adjusted maximum used by validation");
+    assert.ok((await page.evaluate("document.body.innerText"))
+      .includes("Maximum 1,000 kg (2,204.62 lb)"),
+      "The accepted load ceiling should be visible before saving");
+
+    await page.fill(inputId, displayMaximum.toFixed(2));
+    await page.click("button-editor-save");
+    await waitFor("editor closes after saving the maximum allowed load", () => page.evaluate(
+      'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+    ));
+    let saved = await readEstimate();
+    const boundarySet = saved.bench.sets.find((set) => set.id === workingSet.id);
+    assert.ok(boundarySet && boundarySet.weight <= 1_000 && boundarySet.weight > 999.99,
+      "The maximum displayed load should save as a finite canonical value at or below 1,000 kg");
+    assert.ok(Number.isFinite(saved.estimate), "The accepted boundary must produce a finite strength estimate");
+    saved = await assertChart("strength estimate for accepted load boundary");
+
+    await reloadAndWait(page, "reloaded accepted saved-load boundary", "dashboard-muscle-activity");
+    const reloaded = await assertChart("reloaded strength estimate for accepted load boundary");
+    assert.deepEqual(reloaded.session, saved.session,
+      "The accepted boundary workout should remain unchanged after reload");
+    assert.ok(Number.isFinite(reloaded.estimate),
+      "The accepted boundary's reloaded strength-chart estimate must remain finite");
+
+    const rawBeforeRejectedSave = await page.evaluate('localStorage.getItem("setstack-v1")');
+    await openSavedSessionEditor(page, baseUrl, session.id, fixture.id);
+    const reopened = await page.evaluate(`(() => {
+      const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+      const toggle = section?.querySelector("button[aria-expanded]");
+      if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+      return !!toggle;
+    })()`);
+    assert.equal(reopened, true, "Reopen the saved workout to verify an oversized edit is rejected");
+    await page.fillControlledValue(inputId, "1e308");
+    await page.click("button-editor-save");
+    const validation = await waitFor("visible validation for extremely large finite load", () => page.evaluate(`(() => {
+      const error = document.querySelector('[data-testid="text-editor-error"]');
+      return error && { text: error.textContent, visible: error.getClientRects().length > 0 };
+    })()`), (value) => value?.visible === true);
+    assert.equal(validation.text,
+      "Barbell Bench Press, set 1: Load must be between 0 and 1,000 kg (2,204.62 lb).",
+      "The editor should explain its finite maximum in both units");
+    assert.equal(await page.evaluate('localStorage.getItem("setstack-v1")'), rawBeforeRejectedSave,
+      "Rejecting the oversized finite load must leave saved storage byte-for-byte unchanged");
+    assert.deepEqual(await readEstimate().then(({ session: savedSession }) => savedSession), saved.session,
+      "Rejecting the oversized load must preserve the accepted saved workout");
+
+    await page.click("button-editor-cancel");
+    await waitFor("oversized saved-workout editor closes", () => page.evaluate(
+      'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+    ));
+    await navigate(page, `${baseUrl}/clients/${fixture.id}?tab=muscles`, "dashboard-muscle-activity");
+    await reloadAndWait(page, "reloaded after rejected oversized load", "dashboard-muscle-activity");
+    const afterRejectedReload = await assertChart("strength estimate after rejected oversized load reload");
+    assert.deepEqual(afterRejectedReload.session, saved.session,
+      "Reloading after rejection should retain the exact finite saved workout");
+    assert.ok(Number.isFinite(afterRejectedReload.estimate),
+      "Reloading after rejection should retain finite strength-chart values");
+  } finally {
+    await page.evaluate(`(() => {
+      localStorage.setItem("setstack-v1", ${JSON.stringify(originalStorage)});
+      history.replaceState(null, "", ${JSON.stringify(`${baseUrl}/`)});
+    })()`);
+    await reloadAndWait(page, "restored original load-ceiling fixture", "dashboard-columns");
+  }
 }
 
 async function correctSharedMuscleContributorsAndVerifyCharts(page, baseUrl) {
@@ -2904,6 +3045,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Failed added-set saves preserve editor values and charts; retry and reload persist the set");
   await rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Negative and non-finite saved-load corrections are rejected without changing storage or muscle charts");
+  await enforceSavedLoadCeilingAndVerifyStrengthHistory(page, baseUrl);
+  t.diagnostic("The accepted saved-load ceiling produces finite strength history, while oversized finite loads are visibly rejected before and after reload");
   await correctSavedLoadAndVerifyStrengthHistory(page, baseUrl);
   t.diagnostic("A valid saved-load correction updates strength history while chest and triceps set counts stay stable after reload");
   await rejectInvalidSavedRepsAndVerifyUnchanged(page, baseUrl);
@@ -2971,6 +3114,10 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   ), "true", "Progress should be the default Individual Mode tab");
   await page.click("button-individual-range-7");
   await page.click("tab-individual-exercises");
+  await waitFor("individual exercise library tab", () => page.evaluate(
+    '!!document.querySelector(\'[data-testid="tab-individual-exercises-library"]\')',
+  ));
+  await page.click("tab-individual-exercises-library");
   assert.ok(await page.evaluate(
     'document.querySelector(\'[data-testid="individual-exercises-screen"] input[data-testid="input-search-library"]\') !== null',
   ), "Exercises should show the existing searchable exercise library");

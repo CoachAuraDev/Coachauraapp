@@ -8,6 +8,7 @@ import { Modal, fieldClass, labelClass, primaryBtn, quietBtn, rirText } from "./
 import { isValidCalendarDate } from "@/lib/gymmane/calendar-date";
 
 type Row = { key: string; orig?: SetLog; weight: string; reps: string; rir: string; kind: SetKind; init: string };
+const MAX_LOAD_KG = 1_000;
 const wText = (kg: number, unit: "kg" | "lb") => String(Number(toDisplay(kg, unit).toFixed(2)));
 const sig = (r: { weight: string; reps: string; rir: string; kind: SetKind }) => `${r.weight}|${r.reps}|${r.rir}|${r.kind}`;
 export function SessionEditor({ client, session, onClose }: { client: WorkoutOwner; session: SessionLog; onClose: () => void }) {
@@ -15,6 +16,8 @@ export function SessionEditor({ client, session, onClose }: { client: WorkoutOwn
   const updateSession = useFloor((s) => s.updateSession);
   const setNotice = useFloor((s) => s.setNotice);
   const library = exercisePool();
+  const maxLoadDisplay = Number(toDisplay(MAX_LOAD_KG, unit).toFixed(2));
+  const loadLimitMessage = `Load must be between 0 and ${MAX_LOAD_KG.toLocaleString("en-US")} kg (${toDisplay(MAX_LOAD_KG, "lb").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb).`;
   const [name, setName] = useState(session.name);
   const [date, setDate] = useState(session.date);
   const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(session.exercises[0]?.id ?? null);
@@ -47,9 +50,12 @@ export function SessionEditor({ client, session, onClose }: { client: WorkoutOwn
       for (const [i, r] of (rows[ex.id] ?? []).entries()) {
         if (r.orig && sig(r) === r.init) { sets.push(r.orig); continue; }
         const w = Number(r.weight === "" ? 0 : r.weight), reps = Number(r.reps), rir = r.rir === "" ? null : Number(r.rir);
-        if (!Number.isFinite(w) || w < 0 || !Number.isInteger(reps) || reps < 1 || reps > 100 || (rir != null && (!Number.isFinite(rir) || rir < 0 || rir > 10))) { setError(`${ex.name}, set ${i + 1}: check load, whole reps and RIR (0 to 10).`); return; }
+        const weightKg = fromDisplay(w, unit);
+        if (!Number.isFinite(w) || w < 0 || !Number.isFinite(weightKg)) { setError(`${ex.name}, set ${i + 1}: check load, whole reps and RIR (0 to 10).`); return; }
+        if (weightKg > MAX_LOAD_KG) { setError(`${ex.name}, set ${i + 1}: ${loadLimitMessage}`); return; }
+        if (!Number.isInteger(reps) || reps < 1 || reps > 100 || (rir != null && (!Number.isFinite(rir) || rir < 0 || rir > 10))) { setError(`${ex.name}, set ${i + 1}: check load, whole reps and RIR (0 to 10).`); return; }
         sets.push({ id: r.orig?.id ?? uid(),
-          weight: r.orig && r.weight === wText(r.orig.weight, unit) ? r.orig.weight : fromDisplay(w, unit),
+          weight: r.orig && r.weight === wText(r.orig.weight, unit) ? r.orig.weight : weightKg,
           reps, rpe: r.orig && r.rir === rirText(r.orig.rpe) ? r.orig.rpe : rir == null ? null : 10 - rir, kind: r.kind });
       }
       if (sets.length) exercises.push({ ...ex, sets });
@@ -63,7 +69,7 @@ export function SessionEditor({ client, session, onClose }: { client: WorkoutOwn
   };
   return <Modal title="Edit workout" onClose={onClose} wide>
     <div className="grid gap-3 sm:grid-cols-2"><div><label className={labelClass} htmlFor="edit-session-name">Workout name</label><input id="edit-session-name" className={fieldClass} value={name} onChange={(e) => { setName(e.target.value); setError(""); }} data-testid="input-edit-session-name"/></div><div><label className={labelClass} htmlFor="edit-session-date">Date</label><input id="edit-session-date" type="date" className={fieldClass} value={date} onChange={(e) => { setDate(e.target.value); setError(""); }} data-testid="input-edit-session-date"/></div></div>
-    <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">Loads in {unit}. Nothing changes until you save.</p>
+     <p className="mt-3 text-xs text-[hsl(var(--muted-foreground))]">Loads in {unit}. Maximum {MAX_LOAD_KG.toLocaleString("en-US")} kg ({toDisplay(MAX_LOAD_KG, "lb").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} lb). Nothing changes until you save.</p>
     <div className="mt-4 space-y-2">{session.exercises.map((ex) => {
       const exerciseRows = rows[ex.id] ?? [];
       const expanded = expandedExerciseId === ex.id;
@@ -78,7 +84,7 @@ export function SessionEditor({ client, session, onClose }: { client: WorkoutOwn
           {exerciseRows.map((r, i) => <div key={r.key} className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-2.5" data-testid={`editor-set-${r.key}`}>
             <div className="mb-2 flex items-center justify-between"><span className="mono text-[11px] font-semibold text-[hsl(var(--muted-foreground))]">SET {i + 1}</span><button type="button" aria-label={`Remove ${ex.name} set ${i + 1}`} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-3 text-xs font-semibold text-[hsl(var(--destructive))]" onClick={() => remove(ex.id, r.key)} data-testid={`button-editor-remove-set-${r.key}`}><X size={14}/>Remove</button></div>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <div><label className={labelClass} htmlFor={`ew-${r.key}`}>Load ({unit})</label><input id={`ew-${r.key}`} className={`${fieldClass} min-h-11`} type="number" min="0" step="any" inputMode="decimal" value={r.weight} onChange={(e) => patch(ex.id, r.key, { weight: e.target.value })} data-testid={`input-editor-weight-${r.key}`}/></div>
+              <div><label className={labelClass} htmlFor={`ew-${r.key}`}>Load ({unit})</label><input id={`ew-${r.key}`} className={`${fieldClass} min-h-11`} type="number" min="0" max={maxLoadDisplay} step="any" inputMode="decimal" value={r.weight} onChange={(e) => patch(ex.id, r.key, { weight: e.target.value })} data-testid={`input-editor-weight-${r.key}`}/></div>
               <div><label className={labelClass} htmlFor={`er-${r.key}`}>Reps</label><input id={`er-${r.key}`} className={`${fieldClass} min-h-11`} type="number" min="1" inputMode="numeric" value={r.reps} onChange={(e) => patch(ex.id, r.key, { reps: e.target.value })} data-testid={`input-editor-reps-${r.key}`}/></div>
               <div><label className={labelClass} htmlFor={`ei-${r.key}`}>RIR</label><input id={`ei-${r.key}`} className={`${fieldClass} min-h-11`} type="number" min="0" max="10" step="any" inputMode="decimal" placeholder="Optional" value={r.rir} onChange={(e) => patch(ex.id, r.key, { rir: e.target.value })} data-testid={`input-editor-rir-${r.key}`}/></div>
               <div><label className={labelClass} htmlFor={`ek-${r.key}`}>Type</label><select id={`ek-${r.key}`} className={`${fieldClass} min-h-11`} value={r.kind} onChange={(e) => patch(ex.id, r.key, { kind: e.target.value as SetKind })} data-testid={`select-editor-kind-${r.key}`}>{SET_KINDS.map((k) => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></div>

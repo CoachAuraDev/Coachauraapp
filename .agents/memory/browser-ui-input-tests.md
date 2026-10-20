@@ -9,6 +9,12 @@ In the Node/Chromium UI harness, synthetic DOM events and CDP keyboard selection
 
 **How to apply:** Reuse the existing UI harness for profile/workout input regressions. If React or the harness changes, verify the direct React-props callback access still works; do not add a browser dependency just for these flows without a clear need.
 
+The harness's click helper dispatches a DOM click synchronously and does not wait for React to render the next panel. After changing a main tab or section, wait for the new panel's selector before interacting with its controls.
+
+**Why:** A follow-on click can run before the newly selected panel has mounted, causing an unrelated browser test failure.
+
+**How to apply:** Add a `waitFor` on the destination panel or tab after clicks that switch React-rendered views.
+
 Browser navigation checks must establish that the new document has loaded before
 querying its UI, and browser commands need bounded response waits.
 
