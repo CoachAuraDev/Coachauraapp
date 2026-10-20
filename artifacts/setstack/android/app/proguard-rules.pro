@@ -5,6 +5,10 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
+# Capacitor discovers the app-registered Billing plugin through annotations and
+# reflection. Keep the plugin methods intact in R8-minified release builds.
+-keep class app.coachaura.trainer.PlayBillingPlugin { *; }
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:

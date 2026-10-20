@@ -129,17 +129,12 @@ test("price is sourced from Play product details and billing errors fail closed"
   assert.equal(unavailable.hasLifetimeAccess(), false);
 });
 
-test("the development override is accepted only in an Android debug build", async () => {
-  const release = new BillingController(fakeBridge({ debugBuild: false }).bridge, () => true);
-  await release.refresh();
-  assert.equal(release.setDebugSimulation(true), false);
-  assert.equal(release.hasLifetimeAccess(), false);
-
+test("debug build metadata alone never grants lifetime entitlement", async () => {
   const debug = new BillingController(fakeBridge({ debugBuild: true }).bridge, () => true);
   await debug.refresh();
-  assert.equal(debug.setDebugSimulation(true), true);
-  assert.equal(debug.getSnapshot().source, "debug");
-  assert.equal(debug.hasLifetimeAccess(), true);
+  assert.equal(debug.getSnapshot().status, "free");
+  assert.equal(debug.getSnapshot().source, null);
+  assert.equal(debug.hasLifetimeAccess(), false);
 });
 
 test("an Android purchase in a non-Android environment fails closed", async () => {

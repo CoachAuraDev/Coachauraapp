@@ -31,6 +31,13 @@ test("TEST APK validation blocks invalid certificates and package, version, orig
   }
   assert.throws(() => verifyUpgradeMetadata("", certificates, capacitor), /Cannot read/);
 });
+test("TEST Android file sharing is restricted to the app cache used by backup exports", () => {
+  const filePaths = readFileSync(new URL("../android/app/src/main/res/xml/file_paths.xml", import.meta.url), "utf8");
+  const backup = readFileSync(new URL("../src/lib/native/backup.ts", import.meta.url), "utf8");
+  assert.match(filePaths, /<cache-path\b/);
+  assert.doesNotMatch(filePaths, /<(?:external|external-files|external-cache|root)-path\b/);
+  assert.match(backup, /directory:\s*Directory\.Cache/);
+});
 test("TEST guard explicitly fails without native tools or an APK", () => {
   assert.throws(() => verifyBuiltApk("/TEST-missing.apk", undefined), /SDK unavailable/);
   assert.throws(() => verifyBuiltApk("/TEST-missing.apk", "/TEST-sdk"), /does not exist/);
@@ -41,6 +48,9 @@ test("TEST APK workflow needs no saved signing key and retains verification befo
   const build = workflow.indexOf("name: Build debug APK");
   const verify = workflow.indexOf("name: Verify signed APK metadata and CoachAura configuration");
   const upload = workflow.indexOf("name: Downloadable APK");
+  assert.match(workflow, /name: Build debug APK\n\s+if: \$\{\{ !inputs\.build_release \}\}/);
+  assert.match(workflow, /name: Verify signed APK metadata and CoachAura configuration\n\s+if: \$\{\{ !inputs\.build_release \}\}/);
+  assert.match(workflow, /name: Downloadable APK\n\s+if: \$\{\{ !inputs\.build_release \}\}/);
   assert.ok(build >= 0 && build < verify && verify < upload);
   assert.doesNotMatch(workflow.slice(0, upload), /COACHAURA_UPLOAD_(?:KEYSTORE|STORE|KEY_ALIAS|KEY_PASSWORD)/);
   assert.match(workflow, /working-directory: artifacts\/setstack\n\s*shell: bash\n\s*run:\s*\|\n\s*set -euo pipefail\n\s*node scripts\/verify-android-upgrade\.mjs 2>&1 \| tee "\$RUNNER_TEMP\/setstack-apk-verification\.log"/);
@@ -81,5 +91,9 @@ test("TEST APK workflow needs no saved signing key and retains verification befo
   assert.match(gradle, /COACHAURA_RELEASE_KEY_PASSWORD/);
   assert.match(gradle, /if \(hasReleaseSigning\)[\s\S]*?signingConfig signingConfigs\.release/);
   assert.match(gradle, /Release signing is not configured/);
+  assert.match(gradle, /minifyEnabled true/);
+  assert.match(gradle, /proguard-android-optimize\.txt/);
+  const proguard = readFileSync(new URL("../android/app/proguard-rules.pro", import.meta.url), "utf8");
+  assert.match(proguard, /-keep class app\.coachaura\.trainer\.PlayBillingPlugin \{ \*; \}/);
   assert.doesNotMatch(gradle, /storePassword\s*=\s*["'][^"']+["']/);
 });

@@ -68,11 +68,11 @@ export class BillingController {
 
   hasLifetimeAccess = (): boolean =>
     this.snapshot.status === "lifetime" &&
-    (this.snapshot.source === "play" || this.snapshot.source === "debug");
+    this.snapshot.source === "play";
 
   private publish(snapshot: BillingSnapshot): void {
     this.snapshot = snapshot;
-    setBillingAccessSource(snapshot.source, snapshot.debugBuild);
+    setBillingAccessSource(snapshot.source);
     this.listeners.forEach((listener) => listener());
   }
 
@@ -126,7 +126,6 @@ export class BillingController {
           status: "unavailable",
           source: null,
           price,
-          debugBuild: runtime.debugBuild,
           message: query.message || "Google Play Billing could not check purchases. Try again when Google Play is available.",
         });
       } else if (hasPurchasedLifetime(query.purchases)) {
@@ -135,7 +134,6 @@ export class BillingController {
           status: "lifetime",
           source: "play",
           price,
-          debugBuild: runtime.debugBuild,
           message: "Lifetime access confirmed by Google Play.",
         });
       } else if (hasPendingLifetime(query.purchases)) {
@@ -144,7 +142,6 @@ export class BillingController {
           status: "pending",
           source: null,
           price,
-          debugBuild: runtime.debugBuild,
           message: "Google Play is still processing your payment. Access stays locked until it confirms the purchase.",
         });
       } else if (!product.available) {
@@ -153,7 +150,6 @@ export class BillingController {
           status: "unavailable",
           source: null,
           price: null,
-          debugBuild: runtime.debugBuild,
           message: product.message || "The lifetime product is not available from Google Play yet.",
         });
       } else {
@@ -162,7 +158,6 @@ export class BillingController {
           status: "free",
           source: null,
           price,
-          debugBuild: runtime.debugBuild,
           message: "",
         });
       }
@@ -226,21 +221,6 @@ export class BillingController {
     }
   }
 
-  setDebugSimulation(enabled: boolean): boolean {
-    if (!this.snapshot.debugBuild) return false;
-    if (enabled) {
-      this.publish({
-        ...this.snapshot,
-        status: "lifetime",
-        source: "debug",
-        message: "Development simulation only. This access is not saved and is unavailable in release builds.",
-      });
-      return true;
-    }
-    this.publish({ ...this.snapshot, status: "checking", source: null, message: "" });
-    void this.refresh();
-    return true;
-  }
 }
 
 export const billingController = new BillingController(

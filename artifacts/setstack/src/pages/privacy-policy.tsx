@@ -163,7 +163,7 @@ export default function PrivacyPolicyPage() {
               <p>The app’s frontend source does not show server synchronization, user sign-in, an analytics SDK or app-backend requests. This describes the implementation reviewed; it is not a guarantee that no information is ever transmitted. Device, operating-system, network, hosting and platform behavior may also apply.</p>
               <ul>
                 <li><strong>Google Play Billing (Android):</strong> used to retrieve product details and purchase state. Google Play handles this interaction under its own privacy practices.</li>
-                <li><strong>Google Fonts (website):</strong> CoachAura’s web app loads typography resources from Google Fonts. Google may process request-related information under its own privacy practices.</li>
+                <li><strong>Bundled fonts:</strong> CoachAura’s web app and Android app use font files bundled with the app. The reviewed frontend source does not request fonts from Google Fonts.</li>
                 <li><strong>Hosting:</strong> Replit hosts this public policy page and may process technical request information to serve and protect the site.</li>
                 <li><strong>Sharing destinations:</strong> when you choose to share or save a file, the selected app or destination handles it under its own terms and privacy practices.</li>
               </ul>

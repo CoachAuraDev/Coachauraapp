@@ -18,10 +18,9 @@ export type BillingStatus =
 
 export type BillingSnapshot = {
   status: BillingStatus;
-  source: "play" | "debug" | null;
+  source: "play" | null;
   price: string | null;
   message: string;
-  debugBuild: boolean;
   busy: boolean;
 };
 
@@ -30,7 +29,6 @@ export const initialBillingSnapshot: BillingSnapshot = {
   source: null,
   price: null,
   message: "",
-  debugBuild: false,
   busy: false,
 };
 

@@ -58,6 +58,7 @@ jobs:
       - name: Build and sync the bundled web app
         run: pnpm --filter @workspace/setstack run android:sync
       - name: Build debug APK
+        if: ${{ !inputs.build_release }}
         working-directory: artifacts/setstack/android
         shell: bash
         run: |
@@ -66,12 +67,14 @@ jobs:
           ./gradlew assembleDebug --no-daemon --stacktrace --console=plain 2>&1 | tee "$RUNNER_TEMP/setstack-gradle.log"
           test -s app/build/outputs/apk/debug/app-debug.apk
       - name: Verify signed APK metadata and CoachAura configuration
+        if: ${{ !inputs.build_release }}
         working-directory: artifacts/setstack
         shell: bash
         run: |
           set -euo pipefail
           node scripts/verify-android-upgrade.mjs 2>&1 | tee "$RUNNER_TEMP/setstack-apk-verification.log"
       - name: Downloadable APK
+        if: ${{ !inputs.build_release }}
         uses: actions/upload-artifact@v6
         with:
           name: CoachAura-debug-APK-${{ github.run_number }}-${{ github.run_attempt }}

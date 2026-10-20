@@ -55,14 +55,6 @@ export function LifetimePaywall({ onClose }: { onClose: () => void }) {
       {billing.message}
     </p>}
 
-    {billing.debugBuild && <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
-      <p className="text-xs font-semibold text-amber-200">Development test controls</p>
-      <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">Temporary local simulation only. It is not saved and is disabled in release builds.</p>
-      <button type="button" className={`${quietBtn} mt-3 w-full`} onClick={() => billingController.setDebugSimulation(!isLifetime || billing.source !== "debug")} data-testid="button-debug-lifetime">
-        {isLifetime && billing.source === "debug" ? "Clear test unlock" : "Simulate lifetime unlock"}
-      </button>
-    </div>}
-
     <div className="grid gap-2">
       <button
         type="button"

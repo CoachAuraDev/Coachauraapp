@@ -3,9 +3,9 @@ name: CoachAura commercial intent
 description: The user's stated commercial positioning for the Android product.
 ---
 
-The user intends CoachAura to offer up to three client profiles free, with unlimited clients unlocked by a one-time Google Play purchase of `coachaura_lifetime`, initially priced at 299 SEK. There are no subscriptions or mandatory accounts.
+The user intends CoachAura to offer up to three client profiles free, with unlimited clients unlocked by a one-time Google Play purchase of `coachaura_lifetime`, with a Swedish base price of 499 SEK. There are no subscriptions or mandatory accounts.
 
-**Why:** This is the user's current stated product and pricing model; Play Console still needs to be configured before real purchases can be verified.
+**Why:** This is the user's current stated product and pricing model; the actual Play Console base and regional prices remain unverified.
 
 **How to apply:** Display the localized price returned by Google Play, preserve local data when the cap is reached, and distinguish client-side purchase checks from server-side verification.
 

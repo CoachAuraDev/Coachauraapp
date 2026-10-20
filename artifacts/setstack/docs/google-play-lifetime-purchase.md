@@ -131,9 +131,6 @@ release tasks when signing credentials are missing.
   storage key. A fresh Play query restores it after process restart or
   reinstallation. When Billing is unavailable, access fails closed for creating
   clients above the limit, but no existing client or workout record is removed.
-- The development simulation is exposed only when Android marks the installed
-  build as debuggable. It is session-only, never persisted, and cannot unlock a
-  release build.
 - This is client-only verification, not server-side receipt validation. A
   modified or rooted client may be tampered with. A future server verifier using
   the Google Play Developer API and a protected service account would provide
