@@ -8,7 +8,7 @@ import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { seedClients } from "../src/lib/gymmane/seed.ts";
-import { toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
+import { formatLoad, fromDisplay, oneRm, toDisplay, todayIso } from "../src/lib/gymmane/engine.ts";
 import { INDIVIDUAL_PROFILE_ID } from "../src/lib/gymmane/models.ts";
 import { analyzeMuscleActivity, effortFactorFromRpe, mapExerciseMuscles, MUSCLE_GROUPS } from "../src/lib/gymmane/muscle-activity.ts";
 import { kExercises } from "../src/lib/gymmane/catalog.ts";
@@ -1154,6 +1154,120 @@ async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
     assert.deepEqual(await snapshot("seed-amina"), after, "Corrected muscle totals must survive reload");
     assert.deepEqual(await snapshot("seed-leo"), leoBefore, "Another client's chart must stay unchanged after reload");
   }
+}
+
+async function correctSavedLoadAndVerifyStrengthHistory(page, baseUrl) {
+  const beforeState = await storedState(page);
+  const amina = beforeState.clients.find((client) => client.id === "seed-amina");
+  const session = amina?.sessions.find((item) => item.id === "seed-amina-0");
+  const bench = session?.exercises.find((exercise) => exercise.name === "Barbell Bench Press");
+  assert.ok(session && bench, "Amina's latest completed workout should contain a bench press");
+  const strongestSet = bench.sets
+    .filter((set) => set.kind !== "warmup" && set.reps > 0)
+    .reduce((best, set) => !best || oneRm(set.reps, set.weight, set.rpe) > oneRm(best.reps, best.weight, best.rpe) ? set : best, null);
+  assert.ok(strongestSet, "The saved bench press should have a working set for strength history");
+  const correctedDisplayLoad = Number(toDisplay(strongestSet.weight, beforeState.unit).toFixed(2)) + 5;
+  const correctedWeightKg = fromDisplay(correctedDisplayLoad, beforeState.unit);
+  const correctedEstimate = Math.max(...bench.sets.map((set) =>
+    set.kind !== "warmup" && set.reps > 0 ? oneRm(set.reps, set.weight, set.rpe) : 0,
+  ));
+  const muscleSnapshot = async (muscle) => muscleChartSnapshot(page, baseUrl, "seed-amina", muscle, 30);
+  const beforeMuscles = {
+    chest: await muscleSnapshot("chest"),
+    triceps: await muscleSnapshot("triceps"),
+  };
+
+  await navigate(page, `${baseUrl}/clients/seed-amina?tab=muscles`, "dashboard-muscle-activity");
+  await page.fill("select-client-strength-exercise", bench.id);
+  const beforeEstimate = await waitFor("selected bench press strength estimate", () => page.evaluate(
+    'document.querySelector(\'[data-testid="select-client-strength-exercise"]\')?.value === '
+      + JSON.stringify(bench.id)
+      + ' ? document.querySelector(\'[data-testid="text-client-current-estimate"]\')?.textContent.trim() : null',
+  ));
+  assert.ok(beforeEstimate, "The bench press strength history should show a current estimate before correction");
+
+  await openSavedSessionEditor(page, baseUrl, session.id);
+  const expanded = await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${bench.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+    return !!toggle;
+  })()`);
+  assert.equal(expanded, true, "Expand the saved bench press sets");
+  await page.fill(
+    `input-editor-weight-${strongestSet.id}`,
+    correctedDisplayLoad.toFixed(2),
+  );
+  await page.click("button-editor-save");
+  await waitFor("valid saved-load correction", async () => {
+    const client = (await storedState(page)).clients.find((item) => item.id === "seed-amina");
+    return client?.sessions.find((item) => item.id === session.id)?.exercises
+      .find((exercise) => exercise.id === bench.id)?.sets.find((set) => set.id === strongestSet.id)?.weight;
+  }, (weight) => weight === correctedWeightKg);
+  await waitFor("completed-workout editor closes after valid load correction", () => page.evaluate(
+    'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
+  ));
+
+  const expectedClients = structuredClone(beforeState.clients);
+  const expectedClient = expectedClients.find((client) => client.id === "seed-amina");
+  const expectedSession = expectedClient.sessions.find((item) => item.id === session.id);
+  const expectedSet = expectedSession.exercises
+    .find((exercise) => exercise.id === bench.id).sets
+    .find((set) => set.id === strongestSet.id);
+  expectedSet.weight = correctedWeightKg;
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "A valid load correction should persist only the corrected saved set");
+  const expectedEstimate = Math.max(...expectedSession.exercises
+    .find((exercise) => exercise.id === bench.id).sets
+    .map((set) => set.kind !== "warmup" && set.reps > 0 ? oneRm(set.reps, set.weight, set.rpe) : 0));
+  assert.ok(expectedEstimate > correctedEstimate,
+    "Correcting the strongest load upward should raise the expected bench press estimate");
+
+  const afterMuscles = {
+    chest: await muscleSnapshot("chest"),
+    triceps: await muscleSnapshot("triceps"),
+  };
+  for (const muscle of ["chest", "triceps"]) {
+    const before = beforeMuscles[muscle];
+    const after = afterMuscles[muscle];
+    assert.equal(after.workingSets, before.workingSets,
+      `${muscle}: changing a saved load must not change overall working-set counts`);
+    assert.equal(after.completedSessions, before.completedSessions,
+      `${muscle}: changing a saved load must not change completed-session counts`);
+    assert.equal(after.selected.totalSets, before.selected.totalSets,
+      `${muscle}: changing a saved load must not change total involved sets`);
+    assert.equal(after.selected.directIndirect, before.selected.directIndirect,
+      `${muscle}: direct and indirect set counts must remain stable`);
+    assert.equal(after.selected.weightedSets, before.selected.weightedSets,
+      `${muscle}: changing a saved load must not change effort-weighted set counts`);
+    assert.equal(after.selected.weeklyLoad, before.selected.weeklyLoad,
+      `${muscle}: set-based weekly-equivalent totals must remain stable`);
+  }
+
+  await navigate(page, `${baseUrl}/clients/seed-amina?tab=muscles`, "dashboard-muscle-activity");
+  await page.fill("select-client-strength-exercise", bench.id);
+  const actualEstimate = await waitFor("strength history reflects the corrected load", () => page.evaluate(
+    'document.querySelector(\'[data-testid="select-client-strength-exercise"]\')?.value === '
+      + JSON.stringify(bench.id)
+      + ' ? document.querySelector(\'[data-testid="text-client-current-estimate"]\')?.textContent.trim() : null',
+  ));
+  assert.equal(actualEstimate, formatLoad(expectedEstimate, beforeState.unit),
+    "The selected exercise's strength history should show the estimate from the corrected saved load");
+  assert.notEqual(actualEstimate, beforeEstimate,
+    "The corrected saved load should change the visible strength history estimate");
+
+  await reloadAndWait(page, "reloaded valid load correction", "dashboard-muscle-activity");
+  assert.deepEqual((await storedState(page)).clients, expectedClients,
+    "The corrected canonical load and all other client records should persist after reload");
+  await page.fill("select-client-strength-exercise", bench.id);
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-client-current-estimate"]\')?.textContent.trim()',
+  ), formatLoad(expectedEstimate, beforeState.unit),
+  "The corrected strength estimate should remain visible after reload");
+  assert.deepEqual({
+    chest: await muscleSnapshot("chest"),
+    triceps: await muscleSnapshot("triceps"),
+  }, afterMuscles, "Chest and triceps set counts should remain stable after reload");
 }
 
 async function correctSharedMuscleContributorsAndVerifyCharts(page, baseUrl) {
@@ -2790,6 +2904,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("Failed added-set saves preserve editor values and charts; retry and reload persist the set");
   await rejectInvalidSavedLoadsAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Negative and non-finite saved-load corrections are rejected without changing storage or muscle charts");
+  await correctSavedLoadAndVerifyStrengthHistory(page, baseUrl);
+  t.diagnostic("A valid saved-load correction updates strength history while chest and triceps set counts stay stable after reload");
   await rejectInvalidSavedRepsAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Zero, fractional, and over-limit saved-rep corrections are rejected without changing storage or muscle charts");
   await rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl);
