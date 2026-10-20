@@ -11,6 +11,7 @@ import { RestTimer } from "./rest-timer";
 import { SwipeAdjustInput } from "./swipe-adjust-input";
 import { ExerciseMuscleIllustration } from "@/components/muscle-map";
 import { fieldClass, labelClass, primaryBtn, quietBtn, rirText, type AskConfirm } from "./shared";
+import { PersistenceFailure } from "@/lib/gymmane/durable-persistence";
 
 type Fields = {
   kg?: number | null;
@@ -106,6 +107,15 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
   const [reorderStatus, setReorderStatus] = useState("");
+  const finishWorkout = () => {
+    try {
+      finishSession();
+    } catch (failure) {
+      if (!(failure instanceof PersistenceFailure)) throw failure;
+      // The persistence status dialog explains recovery and retry. The failed
+      // transaction leaves the live draft mounted with its logged sets intact.
+    }
+  };
   const exerciseDrag = useRef<{
     pointerId: number;
     from: number;
@@ -410,7 +420,7 @@ export function WorkoutDrawer({ ask }: { ask: AskConfirm }) {
         </>}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[hsl(var(--border))] pt-4">
           <div><p className="mono text-[10px] text-[hsl(var(--muted-foreground))]" data-testid="text-total-sets">{totalSets} sets logged</p><p className="mt-1 text-[10px] text-[hsl(var(--muted-foreground))]">Only logged sets are saved.</p></div>
-          <button type="button" disabled={totalSets === 0} className={`${primaryBtn} min-h-11 disabled:bg-[hsl(var(--muted))] disabled:text-[hsl(var(--muted-foreground))]`} onClick={() => finishSession()} data-testid="button-finish-session"><Check size={15}/>Finish workout</button>
+          <button type="button" disabled={totalSets === 0} className={`${primaryBtn} min-h-11 disabled:bg-[hsl(var(--muted))] disabled:text-[hsl(var(--muted-foreground))]`} onClick={finishWorkout} data-testid="button-finish-session"><Check size={15}/>Finish workout</button>
         </div>
       </div>
     </main>

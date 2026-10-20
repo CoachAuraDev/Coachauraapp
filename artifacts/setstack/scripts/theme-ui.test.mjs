@@ -3106,7 +3106,113 @@ async function verifyPolishedEmptyStates(page, baseUrl, fixtureClients) {
   }
 }
 
-test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 360000 }, async (t) => {
+async function finishWorkoutWithFailedSave(page, baseUrl, debugPort) {
+  const chartPage = await openPage(debugPort);
+  try {
+    const beforeChart = await muscleChartSnapshot(chartPage, baseUrl, clientId, "chest", 7);
+    await navigate(page, `${baseUrl}/clients/${clientId}`, "button-client-start-session");
+    const before = await storedState(page);
+    const clientBefore = before.clients.find((client) => client.id === clientId);
+    const sessionsBefore = clientBefore.sessions.length;
+    await page.click("button-client-start-session");
+    await waitFor("workout logger for failed-finish scenario", () => page.evaluate(
+      '!!document.querySelector(\'[data-testid="panel-workout-logger"]\')',
+    ));
+
+    const expectedSets = [
+      { weight: 52.5, reps: 9, rir: 3 },
+      { weight: 57.5, reps: 7, rir: 1 },
+    ];
+    for (const item of expectedSets) {
+      const displayWeight = String(Number(toDisplay(item.weight, before.unit).toFixed(2)));
+      await page.fill("input-set-weight", displayWeight);
+      await page.fill("input-set-reps", String(item.reps));
+      await page.fill("input-set-rir", String(item.rir));
+      await page.click("button-log-set");
+    }
+    const expectedSetTexts = expectedSets.map((item) => {
+      const displayWeight = String(Number(toDisplay(item.weight, before.unit).toFixed(2)));
+      return `${formatLoad(fromDisplay(Number(displayWeight), before.unit), before.unit)} × ${item.reps}`;
+    });
+    await waitFor("set logged before finish", () => page.evaluate(
+      'document.querySelector(\'[data-testid="list-current-sets"]\')?.textContent',
+    ), (text) => expectedSetTexts.every((expected) => text?.includes(expected)));
+
+    const pending = await storedState(page);
+    const draftBeforeFinish = structuredClone(pending.draft);
+    const rawBeforeFinish = await page.evaluate('localStorage.getItem("setstack-v1")');
+    assert.ok(draftBeforeFinish?.exercises.some((exercise) =>
+      expectedSets.every((expected) => exercise.sets.some((set) => set.reps === expected.reps))),
+    "The workout draft should include every logged set before finishing");
+    await page.evaluate(`(() => {
+      window.__coachauraFailNextSetstackWrite = true;
+      const originalSetItem = Storage.prototype.setItem;
+      Storage.prototype.setItem = function(key, value) {
+        if (key === "setstack-v1" && window.__coachauraFailNextSetstackWrite) {
+          window.__coachauraFailNextSetstackWrite = false;
+          throw new DOMException("Simulated storage write failure", "QuotaExceededError");
+        }
+        return originalSetItem.call(this, key, value);
+      };
+    })()`);
+    await page.click("button-finish-session");
+    await waitFor("failed workout-finish write warning", () => page.evaluate(
+      'document.querySelector(\'[data-testid="button-retry-storage"]\') !== null',
+    ));
+
+    assert.equal(await page.evaluate(
+      '!!document.querySelector(\'[data-testid="panel-workout-logger"]\')',
+    ), true, "The live workout logger should remain available after a failed final save");
+    const visibleSets = await page.evaluate(
+      'document.querySelector(\'[data-testid="list-current-sets"]\')?.textContent',
+    );
+    assert.ok(expectedSetTexts.every((expected) => visibleSets?.includes(expected)),
+      "All entered loads and reps should remain visible in the active workout");
+    assert.equal(await page.evaluate('localStorage.getItem("setstack-v1")'), rawBeforeFinish,
+      "A failed finish must leave saved data byte-for-byte unchanged");
+    const afterFailure = await storedState(page);
+    assert.deepEqual(afterFailure.draft, draftBeforeFinish, "The active workout and its entered values must remain unchanged");
+    assert.equal(afterFailure.clients.find((client) => client.id === clientId).sessions.length, sessionsBefore,
+      "A failed finish must not append a workout to saved history");
+    await reloadAndWait(chartPage, "charts reloaded after rejected final save", "dashboard-muscle-activity");
+    assert.deepEqual(await muscleChartSnapshot(chartPage, baseUrl, clientId, "chest", 7), beforeChart,
+      "A failed finish must leave the client's saved muscle charts unchanged");
+
+    await page.click("button-retry-storage");
+    await waitFor("recovered workout-finish storage", () => page.evaluate(
+      'document.querySelector(\'[data-testid="button-retry-storage"]\') === null',
+    ));
+    assert.equal(await page.evaluate(
+      '!!document.querySelector(\'[data-testid="panel-workout-logger"]\')',
+    ), true, "Checking storage must not close the active workout");
+    await page.click("button-finish-session");
+    await waitFor("retried workout finish", () => page.evaluate(
+      'document.querySelector(\'[data-testid="panel-workout-logger"]\') === null',
+    ));
+
+    const completed = await storedState(page);
+    const clientCompleted = completed.clients.find((client) => client.id === clientId);
+    assert.equal(clientCompleted.sessions.length, sessionsBefore + 1,
+      "Retrying the finish should add exactly one completed workout");
+    const saved = clientCompleted.sessions.at(-1);
+    const exerciseWithSets = draftBeforeFinish.exercises.find((exercise) => exercise.sets.length > 0);
+    const savedExercise = saved.exercises.find((exercise) => exercise.id === exerciseWithSets.id);
+    assert.deepEqual(savedExercise?.sets, exerciseWithSets.sets,
+      "The retried workout should preserve the IDs and exact values of every logged set");
+
+    await reloadAndWait(page, "retried completed workout after reload", "button-client-start-session");
+    const reloaded = await storedState(page);
+    const reloadedClient = reloaded.clients.find((client) => client.id === clientId);
+    assert.equal(reloadedClient.sessions.length, sessionsBefore + 1,
+      "Reloading should still show exactly one completed workout from the retry");
+    assert.equal(reloadedClient.sessions.at(-1).id, saved.id,
+      "The same completed workout should remain saved after reload");
+  } finally {
+    await chartPage.close();
+  }
+}
+
+test("profile charts, workout logging, numeric inputs, and rest timer work across CoachAura themes", { timeout: 480000 }, async (t) => {
   const chrome = browserBinary();
   try {
     await access(chrome);
@@ -3255,6 +3361,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.reps, 7);
   assert.equal(completed.sessions.at(-1)?.exercises[0]?.sets[0]?.rpe, 8);
   await assertAppearance(page, "default");
+  await finishWorkoutWithFailedSave(page, baseUrl, debugPort);
+  t.diagnostic("Failed final workout saves preserve the active workout and charts; storage recovery and retry save one workout after reload");
   await cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Cancelling saved-set edits leaves client history and muscle charts unchanged");
   await renameSavedWorkoutAndVerifyCharts(page, baseUrl);
