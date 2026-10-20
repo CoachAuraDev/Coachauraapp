@@ -8,6 +8,7 @@ import {
   strengthExerciseOptions,
   weeklySetPoints,
 } from "./client-overview.ts";
+import { e1rmSeries, personalRecords } from "./metrics.ts";
 
 function set(id: string, weight: number, reps = 8, kind: SetLog["kind"] = "normal"): SetLog {
   return { id, weight, reps, kind, rpe: null };
@@ -84,6 +85,47 @@ test("strength options and history are based on valid completed working sets", (
   assert.equal(history[1]?.date, "2026-10-14");
   assert.ok(history[1]!.e1rm > history[0]!.e1rm);
   assert.equal(estimatedStrengthHistory(client([]), "leg-extension", "2026-10-15").length, 0);
+});
+
+test("warm-up-only exercise sessions remain saved but create no strength point or personal record", () => {
+  const athlete = client([
+    session("working-session", "2026-10-10", [
+      exercise("warmup-test-lift", "Warm-up Test Lift", [set("work", 80, 5)]),
+    ]),
+    session("warmup-only-session", "2026-10-12", [
+      exercise("warmup-test-lift", "Warm-up Test Lift", [set("warmup", 120, 5, "warmup")]),
+    ]),
+  ]);
+
+  assert.equal(athlete.sessions.some((item) => item.id === "warmup-only-session"), true,
+    "The saved warm-up-only workout should remain part of workout history");
+  assert.deepEqual(
+    estimatedStrengthHistory(athlete, "warmup-test-lift", "2026-10-15").map(({ date }) => date),
+    ["2026-10-10"],
+    "A warm-up-only session must not add an estimated strength-history point",
+  );
+  assert.deepEqual(
+    e1rmSeries(athlete, "warmup-test-lift").map(({ date }) => date),
+    ["2026-10-10"],
+    "The general exercise strength series must also omit the warm-up-only session",
+  );
+  assert.equal(
+    personalRecords(athlete).find((record) => record.id === "warmup-test-lift")?.date,
+    "2026-10-10",
+    "A warm-up-only session must not create or update the exercise's personal record",
+  );
+  assert.deepEqual(strengthExerciseOptions(client([
+    session("only-warmup-session", "2026-10-12", [
+      exercise("warmup-only-lift", "Warm-up Only Lift", [set("warmup-only", 120, 5, "warmup")]),
+    ]),
+  ]), "2026-10-15"), [],
+  "An exercise logged only with warm-ups must not appear as a strength exercise option");
+  assert.deepEqual(personalRecords(client([
+    session("only-warmup-session", "2026-10-12", [
+      exercise("warmup-only-lift", "Warm-up Only Lift", [set("warmup-only", 120, 5, "warmup")]),
+    ]),
+  ])), [],
+  "A warm-up-only workout must not create any personal record");
 });
 
 test("muscle radar combines detailed mapped stimulus without adding invented values", () => {

@@ -1271,6 +1271,97 @@ async function correctSavedLoadAndVerifyStrengthHistory(page, baseUrl) {
   }, afterMuscles, "Chest and triceps set counts should remain stable after reload");
 }
 
+async function verifyWarmupOnlyWorkoutHasNoStrengthRecords(page, baseUrl) {
+  const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
+  assert.ok(originalStorage, "The original browser fixture should be available for restoration");
+
+  const fixtureId = "test-warmup-only-strength-history";
+  const sessionId = `${fixtureId}-session`;
+  const exerciseId = `${fixtureId}-exercise`;
+  const setId = `${fixtureId}-set`;
+  try {
+    const stored = JSON.parse(originalStorage);
+    const sourceClient = stored.state.clients.find((client) => client.id === "seed-amina");
+    assert.ok(sourceClient, "A saved client should be available to build an isolated workout fixture");
+    const fixture = structuredClone(sourceClient);
+    fixture.id = fixtureId;
+    fixture.name = "Warm-up-only strength fixture";
+    fixture.sessions = [{
+      id: sessionId,
+      date: todayIso(),
+      durationSec: 600,
+      name: "Warm-up-only workout",
+      routineId: null,
+      exercises: [{
+        id: exerciseId,
+        name: "Warm-up Test Exercise",
+        primary: "chest",
+        equipment: "Barbell",
+        sets: [{ id: setId, weight: 40, reps: 8, kind: "normal", rpe: null }],
+      }],
+    }];
+    fixture.routines = [];
+    fixture.weeklyPlan = {};
+    stored.state.clients.push(fixture);
+    await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(JSON.stringify(stored))})`);
+
+    await navigate(page, `${baseUrl}/clients/${fixtureId}?tab=history`, "tab-history");
+    const historyOpened = await page.evaluate(`(() => {
+      const edit = document.querySelector('[data-testid="button-edit-session-${sessionId}"]');
+      const details = edit?.closest("details");
+      details?.querySelector("summary")?.click();
+      return !!details?.open;
+    })()`);
+    assert.equal(historyOpened, true, "The saved workout should be available in the history editor");
+    await page.click(`button-edit-session-${sessionId}`);
+    await waitFor("warm-up fixture editor", () => page.evaluate(
+      'document.querySelector(\'[data-testid="select-editor-kind-' + setId + '"]\') !== null',
+    ));
+    await page.fill(`select-editor-kind-${setId}`, "warmup");
+    await page.click("button-editor-save");
+    await waitFor("saved warm-up-only workout", async () => {
+      const client = (await storedState(page)).clients.find((item) => item.id === fixtureId);
+      return client?.sessions.find((session) => session.id === sessionId)?.exercises[0]?.sets[0]?.kind;
+    }, (kind) => kind === "warmup");
+
+    const updatedClient = (await storedState(page)).clients.find((client) => client.id === fixtureId);
+    assert.equal(updatedClient?.sessions.length, 1, "Saving warm-ups must not remove the workout from history");
+    assert.equal(updatedClient?.sessions[0]?.exercises[0]?.sets[0]?.kind, "warmup",
+      "The saved set should retain its warm-up type");
+    assert.ok(await page.evaluate(
+      `document.querySelector('[data-testid="button-edit-session-${sessionId}"]') !== null`,
+    ), "The saved warm-up-only workout should remain visible in history");
+
+    await reloadAndWait(page, "reloaded warm-up-only workout history", "tab-history");
+    const reloadedClient = (await storedState(page)).clients.find((client) => client.id === fixtureId);
+    assert.deepEqual(reloadedClient?.sessions, updatedClient?.sessions,
+      "The warm-up-only workout should remain saved after reload");
+    assert.ok(await page.evaluate(
+      `document.querySelector('[data-testid="button-edit-session-${sessionId}"]') !== null`,
+    ), "The warm-up-only workout should still appear in history after reload");
+
+    await navigate(page, `${baseUrl}/clients/${fixtureId}?tab=records`, "empty-personal-records");
+    assert.equal(await page.evaluate(
+      `document.querySelector('[data-testid="record-${exerciseId}"]') !== null`,
+    ), false, "A warm-up-only set must not create a personal record");
+    await navigate(page, `${baseUrl}/clients/${fixtureId}?tab=muscles`, "card-client-strength-trend");
+    const strengthCard = await page.evaluate(`({
+      hasStrengthOption: document.querySelector('[data-testid="select-client-strength-exercise"]') !== null,
+      hasEstimate: document.querySelector('[data-testid="text-client-current-estimate"]') !== null,
+      startsEmpty: document.querySelector('[data-testid="card-client-strength-trend"]')?.textContent.includes("Progress starts here")
+    })`);
+    assert.deepEqual(strengthCard, {
+      hasStrengthOption: false,
+      hasEstimate: false,
+      startsEmpty: true,
+    }, "A warm-up-only exercise must not appear in strength history or create a trend estimate");
+  } finally {
+    await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(originalStorage)})`);
+    await loadPage(page, "Page.reload", { ignoreCache: true });
+    await navigate(page, `${baseUrl}/clients/${clientId}?tab=muscles`, "card-client-strength-trend");
+  }
+}
+
 async function enforceSavedLoadCeilingAndVerifyStrengthHistory(page, baseUrl) {
   const originalStorage = await page.evaluate('localStorage.getItem("setstack-v1")');
   assert.ok(originalStorage, "The original browser fixture should be available for restoration");
@@ -3049,6 +3140,8 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   t.diagnostic("The accepted saved-load ceiling produces finite strength history, while oversized finite loads are visibly rejected before and after reload");
   await correctSavedLoadAndVerifyStrengthHistory(page, baseUrl);
   t.diagnostic("A valid saved-load correction updates strength history while chest and triceps set counts stay stable after reload");
+  await verifyWarmupOnlyWorkoutHasNoStrengthRecords(page, baseUrl);
+  t.diagnostic("Editing a saved workout to warm-up-only keeps it in history without adding strength history or personal records");
   await rejectInvalidSavedRepsAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Zero, fractional, and over-limit saved-rep corrections are rejected without changing storage or muscle charts");
   await rejectInvalidSavedEffortAndVerifyUnchanged(page, baseUrl);
