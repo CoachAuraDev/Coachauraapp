@@ -2540,10 +2540,29 @@ async function exerciseWorkout(page, baseUrl) {
     "The live exercise should show its local muscle illustration without replacing logging controls");
   const currentUnit = (await storedState(page)).unit;
   for (const control of [
-    { testId: "input-set-weight", step: currentUnit === "kg" ? 0.5 : 1 },
-    { testId: "input-set-reps", step: 1 },
-    { testId: "input-set-rir", step: 0.5 },
+    { testId: "input-set-weight", label: "load", step: currentUnit === "kg" ? 0.5 : 1, unit: currentUnit, value: "10" },
+    { testId: "input-set-reps", label: "reps", step: 1, value: "8" },
+    { testId: "input-set-rir", label: "RIR", step: 0.5, value: "2" },
   ]) {
+    const accessibility = await page.evaluate(`(() => {
+      const input = document.querySelector('[data-testid="${control.testId}"]');
+      const help = document.getElementById(input?.getAttribute("aria-describedby"));
+      return {
+        type: input?.type,
+        step: input?.step,
+        help: help?.textContent,
+        decrease: document.querySelector('[data-testid="${control.testId}-decrease"]')?.getAttribute("aria-label"),
+        increase: document.querySelector('[data-testid="${control.testId}-increase"]')?.getAttribute("aria-label"),
+      };
+    })()`);
+    const amountLabel = `${control.step}${control.unit ? ` ${control.unit}` : ""}`;
+    assert.equal(accessibility.type, "number", `${control.testId} remains directly editable as a numeric input`);
+    assert.equal(accessibility.step, "any", `${control.testId} accepts exact typed decimal values`);
+    assert.match(accessibility.help, /Enter a value, use the increase and decrease buttons, or use the keyboard arrow keys/);
+    assert.match(accessibility.help, /swiping is optional/i);
+    assert.equal(accessibility.decrease, `Decrease ${control.label} by ${amountLabel}`);
+    assert.equal(accessibility.increase, `Increase ${control.label} by ${amountLabel}`);
+
     const before = await page.evaluate(`Number(document.querySelector('[data-testid="${control.testId}"]')?.value || 0)`);
     const increment = await swipeAdjust(page, control.testId, 1);
     assert.ok(increment?.heldScale, `${control.testId} scales while held`);
@@ -2554,7 +2573,52 @@ async function exerciseWorkout(page, baseUrl) {
     const decrement = await swipeAdjust(page, control.testId, -1);
     assert.equal(decrement?.direction, "decrease", `${control.testId} signals a decrease`);
     assert.equal(Number(decrement?.value), before, `${control.testId} applies left swipes without dropping steps`);
+
+    await page.fill(control.testId, control.value);
+    await page.click(`${control.testId}-increase`);
+    await waitFor(`${control.label} increment button`, () => page.evaluate(
+      `document.querySelector('[data-testid="${control.testId}"]')?.value`,
+    ), (value) => Number(value) === Number(control.value) + control.step);
+    assert.equal(await page.evaluate(
+      `document.querySelector('[data-testid="${control.testId}-adjustment-status"]')?.textContent`,
+    ), `${control.label} changed to ${Number(control.value) + control.step}${control.unit ? ` ${control.unit}` : ""}.`,
+    `${control.label} adjustments announce their resulting value`);
+    await page.click(`${control.testId}-decrease`);
+    await waitFor(`${control.label} decrement button`, () => page.evaluate(
+      `document.querySelector('[data-testid="${control.testId}"]')?.value`,
+    ), (value) => value === control.value);
+
+    const keyboard = await page.evaluate(`(() => {
+      const input = document.querySelector('[data-testid="${control.testId}"]');
+      const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"));
+      let prevented = false;
+      input[key].onKeyDown({ key: "ArrowUp", preventDefault() { prevented = true; } });
+      return prevented;
+    })()`);
+    assert.equal(keyboard, true, `${control.testId} handles keyboard arrow adjustment`);
+    await waitFor(`${control.label} keyboard increment`, () => page.evaluate(
+      `document.querySelector('[data-testid="${control.testId}"]')?.value`,
+    ), (value) => Number(value) === Number(control.value) + control.step);
+    assert.equal(await page.evaluate(
+      `document.querySelector('[data-testid="${control.testId}-adjustment-status"]')?.textContent`,
+    ), `${control.label} changed to ${Number(control.value) + control.step}${control.unit ? ` ${control.unit}` : ""}.`,
+    `${control.label} keyboard adjustments announce their resulting value`);
+    await page.evaluate(`(() => {
+      const input = document.querySelector('[data-testid="${control.testId}"]');
+      const key = Object.keys(input).find((name) => name.startsWith("__reactProps$"));
+      input[key].onKeyDown({ key: "ArrowDown", preventDefault() {} });
+    })()`);
+    await waitFor(`${control.label} keyboard decrement`, () => page.evaluate(
+      `document.querySelector('[data-testid="${control.testId}"]')?.value`,
+    ), (value) => value === control.value);
   }
+  const adjustedDraft = (await storedState(page)).draft;
+  const entry = adjustedDraft.entries[adjustedDraft.exercises[adjustedDraft.activeIndex].id];
+  assert.deepEqual(
+    { weight: entry?.inputs?.weight, reps: entry?.inputs?.reps, rir: entry?.inputs?.rir },
+    { weight: "10", reps: "8", rir: "2" },
+    "Button and keyboard adjustments update the existing workout draft inputs",
+  );
 
   await page.click("button-rest-settings");
   await page.fill("input-rest-seconds", "75", true);
@@ -3337,10 +3401,7 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   assert.deepEqual(personalPlan.exerciseIds, [secondExerciseId, exerciseId], "Exercise order can be changed and saved");
   assert.deepEqual(personalPlanState.clients, stateBeforePersonalWorkout.clients, "Plans remain separate from trainer client records");
 
-  await page.send("Page.reload");
-  await waitFor("Individual Mode after reload", () => page.evaluate(
-    '!!document.querySelector(\'[data-testid="individual-bottom-navigation"]\')',
-  ));
+  await reloadAndWait(page, "Individual Mode after reload", "individual-bottom-navigation");
   await page.click("tab-individual-exercises");
   await waitFor("personal plans after reload", () => page.evaluate(
     '!!document.querySelector(\'[data-testid="tab-individual-exercises-plans"]\')',

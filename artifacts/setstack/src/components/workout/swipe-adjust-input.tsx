@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 
 type SwipeAdjustInputProps = {
   id: string;
+  adjustmentLabel: string;
+  adjustmentUnit?: string;
   value: string;
   onValueChange: (value: string) => void;
   className: string;
@@ -32,6 +34,8 @@ const HOLD_SCALE = 1.035;
 
 export function SwipeAdjustInput({
   id,
+  adjustmentLabel,
+  adjustmentUnit,
   value,
   onValueChange,
   className,
@@ -50,6 +54,7 @@ export function SwipeAdjustInput({
   const directionTimer = useRef<number | null>(null);
   const [active, setActive] = useState(false);
   const [direction, setDirection] = useState<-1 | 0 | 1>(0);
+  const [adjustmentAnnouncement, setAdjustmentAnnouncement] = useState("");
 
   useEffect(() => {
     valueRef.current = value;
@@ -137,6 +142,9 @@ export function SwipeAdjustInput({
     const nextValue = String(Number(next.toFixed(Math.min(10, Math.max(precision, existingPrecision)))));
     valueRef.current = nextValue;
     onValueChange(nextValue);
+    setAdjustmentAnnouncement(
+      `${adjustmentLabel} changed to ${nextValue}${adjustmentUnit ? ` ${adjustmentUnit}` : ""}.`,
+    );
 
     const changeDirection = Math.sign(steps) as -1 | 1;
     setDirection(changeDirection);
@@ -162,26 +170,87 @@ export function SwipeAdjustInput({
     active && direction < 0 ? "text-[hsl(var(--muted-foreground))]" : "",
   ].filter(Boolean).join(" ");
 
-  return <input
-    ref={inputRef}
-    id={id}
-    type="number"
-    min={min}
-    max={Number.isFinite(max) ? max : undefined}
-    step="any"
-    inputMode={inputMode}
-    value={value}
-    placeholder={placeholder}
-    className={classes}
-    onChange={(event) => {
-      valueRef.current = event.target.value;
-      onValueChange(event.target.value);
-    }}
-    onPointerDown={onPointerDown}
-    onPointerMove={onPointerMove}
-    onPointerUp={(event) => endGesture(event)}
-    onPointerCancel={(event) => endGesture(event, true)}
-    data-adjust-direction={direction > 0 ? "increase" : direction < 0 ? "decrease" : "none"}
-    data-testid={testId}
-  />;
+  const changeByStep = (amount: -1 | 1) => {
+    const blank = valueRef.current.trim() === "";
+    if (blank && amount < 0) return;
+
+    const current = blank ? min : Number(valueRef.current);
+    const next = blank
+      ? min > 0 ? min : min + adjustmentStep
+      : Math.min(max, Math.max(min, current + amount * adjustmentStep));
+    if (!Number.isFinite(next) || (!blank && next === current)) return;
+
+    const existingPrecision = valueRef.current.includes(".")
+      ? valueRef.current.split(".")[1]?.length ?? 0
+      : 0;
+    const nextValue = String(Number(next.toFixed(Math.min(10, Math.max(precision, existingPrecision)))));
+    valueRef.current = nextValue;
+    onValueChange(nextValue);
+    setAdjustmentAnnouncement(
+      `${adjustmentLabel} changed to ${nextValue}${adjustmentUnit ? ` ${adjustmentUnit}` : ""}.`,
+    );
+  };
+  const amountLabel = `${adjustmentStep}${adjustmentUnit ? ` ${adjustmentUnit}` : ""}`;
+  const helpId = `${id}-adjustment-help`;
+
+  return <div>
+    <input
+      ref={inputRef}
+      id={id}
+      type="number"
+      min={min}
+      max={Number.isFinite(max) ? max : undefined}
+      step="any"
+      inputMode={inputMode}
+      value={value}
+      placeholder={placeholder}
+      className={classes}
+      aria-describedby={helpId}
+      onChange={(event) => {
+        valueRef.current = event.target.value;
+        onValueChange(event.target.value);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+          event.preventDefault();
+          changeByStep(event.key === "ArrowUp" ? 1 : -1);
+        }
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={(event) => endGesture(event)}
+      onPointerCancel={(event) => endGesture(event, true)}
+      data-adjust-direction={direction > 0 ? "increase" : direction < 0 ? "decrease" : "none"}
+      data-testid={testId}
+    />
+    <div className="mt-1 flex gap-1">
+      <button
+        type="button"
+        disabled={value.trim() === "" || Number(value) <= min}
+        onClick={() => changeByStep(-1)}
+        aria-label={`Decrease ${adjustmentLabel} by ${amountLabel}`}
+        className="min-h-9 flex-1 rounded-md bg-[hsl(var(--muted))] text-base font-semibold hover:bg-[hsl(var(--accent))] disabled:opacity-40"
+        data-testid={`${testId}-decrease`}
+      >−</button>
+      <button
+        type="button"
+        disabled={value.trim() !== "" && Number(value) >= max}
+        onClick={() => changeByStep(1)}
+        aria-label={`Increase ${adjustmentLabel} by ${amountLabel}`}
+        className="min-h-9 flex-1 rounded-md bg-[hsl(var(--muted))] text-base font-semibold hover:bg-[hsl(var(--accent))] disabled:opacity-40"
+        data-testid={`${testId}-increase`}
+      >+</button>
+    </div>
+    <span id={helpId} className="sr-only">
+      Enter a value, use the increase and decrease buttons, or use the keyboard arrow keys.
+      Horizontal swiping is optional.
+    </span>
+    <span
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="sr-only"
+      data-testid={`${testId}-adjustment-status`}
+    >{adjustmentAnnouncement}</span>
+  </div>;
 }
