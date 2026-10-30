@@ -1208,6 +1208,7 @@ async function cancelSavedSetCorrectionAndVerifyUnchanged(page, baseUrl) {
 
 async function rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl) {
   const beforeState = await storedState(page);
+  const beforeRaw = await page.evaluate('localStorage.getItem("setstack-v1")');
   const amina = beforeState.clients.find((client) => client.id === "seed-amina");
   const session = amina?.sessions.find((item) => item.id === "seed-amina-1");
   assert.ok(session, "Amina's saved workout should be available to edit");
@@ -1259,20 +1260,55 @@ async function rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl) {
   assert.deepEqual((await storedState(page)).clients, beforeState.clients,
     "A rejected empty-workout save must not persist the edited name, date, or sets");
 
-  await page.click("button-editor-cancel");
-  await waitFor("cancelled empty saved workout editor to close", () => page.evaluate(
+  const restoredExercise = session.exercises[0];
+  await page.evaluate(`(() => {
+    const section = document.querySelector('[data-testid="editor-exercise-${restoredExercise.id}"]');
+    const toggle = section?.querySelector("button[aria-expanded]");
+    if (toggle?.getAttribute("aria-expanded") === "false") toggle.click();
+  })()`);
+  await page.click(`button-editor-add-set-${restoredExercise.id}`);
+  assert.equal(await page.evaluate(
+    'document.querySelector(\'[data-testid="text-editor-error"]\')?.textContent',
+  ), undefined, "Adding a set back should immediately clear the empty-workout warning");
+  assert.equal(await page.evaluate(
+    `document.querySelectorAll('[data-testid="editor-exercise-${restoredExercise.id}"] [data-testid^="editor-set-"]').length`,
+  ), 1, "Restoring a set should make the workout valid to save");
+
+  await page.click("button-editor-save");
+  await waitFor("restored saved workout editor to close", () => page.evaluate(
     'document.querySelector(\'[data-testid="input-edit-session-date"]\') === null',
   ));
-  assert.deepEqual((await storedState(page)).clients, beforeState.clients,
-    "Cancelling after the rejected save must leave every stored client record unchanged");
-  assert.deepEqual(await snapshot(), beforeCharts,
-    "Rejecting and cancelling the empty-workout edit must leave all checked muscle charts unchanged");
+  const savedClients = (await storedState(page)).clients;
+  const savedSession = savedClients.find((client) => client.id === amina.id)
+    ?.sessions.find((item) => item.id === session.id);
+  assert.ok(savedSession, "The restored workout should remain in saved history");
+  assert.equal(savedSession.name, "This edit must not be saved",
+    "The valid restored-set save should also persist the pending workout name");
+  assert.equal(savedSession.date, changedDate,
+    "The valid restored-set save should also persist the pending workout date");
+  assert.equal(savedSession.exercises.length, 1,
+    "Only the exercise containing the restored set should remain");
+  assert.equal(savedSession.exercises[0].id, restoredExercise.id);
+  assert.equal(savedSession.exercises[0].sets.length, 1,
+    "Exactly one restored set should be saved");
+  const savedSet = savedSession.exercises[0].sets[0];
+  assert.ok(savedSet.id, "The restored set should have a persisted ID");
+  assert.deepEqual(
+    { weight: savedSet.weight, reps: savedSet.reps, rpe: savedSet.rpe, kind: savedSet.kind },
+    { weight: 0, reps: 8, rpe: null, kind: "normal" },
+    "The restored set should persist with its editor values",
+  );
 
-  await reloadAndWait(page, "reloaded cancelled empty workout edit", "dashboard-muscle-activity");
+  await reloadAndWait(page, "reloaded workout with restored set", "button-client-start-session");
+  assert.deepEqual((await storedState(page)).clients, savedClients,
+    "The restored set and valid workout changes should persist after reload");
+
+  await page.evaluate(`localStorage.setItem("setstack-v1", ${JSON.stringify(beforeRaw)})`);
+  await reloadAndWait(page, "restored original empty-workout test fixture", "button-client-start-session");
   assert.deepEqual((await storedState(page)).clients, beforeState.clients,
-    "Workout history and client records must remain unchanged after reload");
+    "The test should restore all original client records after confirming persistence");
   assert.deepEqual(await snapshot(), beforeCharts,
-    "Muscle chart snapshots must remain unchanged after reload");
+    "Restoring the original test fixture should restore the original muscle chart snapshots");
 }
 
 async function correctSavedSetsAndVerifyCharts(page, baseUrl) {
@@ -3504,7 +3540,7 @@ test("profile charts, workout logging, numeric inputs, and rest timer work acros
   await rejectImpossibleSavedWorkoutDateAndVerifyUnchanged(page, baseUrl);
   t.diagnostic("Impossible saved-workout dates are rejected without changing history, while valid dates still save");
   await rejectEmptySavedWorkoutAndVerifyUnchanged(page, baseUrl);
-  t.diagnostic("Saving a workout with every set removed is rejected; cancelling preserves history and charts");
+  t.diagnostic("The empty-workout warning clears when a set is restored, and the saved set persists after reload");
   await addSavedSetAndVerifyCharts(page, baseUrl, initialClients, debugPort);
   t.diagnostic("Failed added-set saves preserve editor values and charts; retry and reload persist the set");
   await removeSavedSetAfterFailedSaveAndVerifyCharts(page, baseUrl, initialClients, debugPort);
