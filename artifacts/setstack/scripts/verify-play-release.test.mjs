@@ -6,16 +6,16 @@ import { verifyPlayReleaseConfig } from "./verify-play-release.mjs";
 const gradle = readFileSync(new URL("../android/app/build.gradle", import.meta.url), "utf8");
 
 test("release metadata keeps CoachAura's package and requires a newer Play version code", () => {
-  assert.deepEqual(verifyPlayReleaseConfig(gradle, "1"), {
+  assert.deepEqual(verifyPlayReleaseConfig(gradle, "3"), {
     applicationId: "app.coachaura.trainer",
-    versionCode: 3,
+    versionCode: 4,
     versionName: "1.0.2",
-    previousVersionCode: 1,
+    previousVersionCode: 3,
   });
 });
 
 test("release version validation rejects missing, invalid, equal and higher Play version codes", () => {
-  for (const prior of ["", "not-a-number", "-1", "3", "4"]) {
+  for (const prior of ["", "not-a-number", "-1", "4", "5"]) {
     assert.throws(() => verifyPlayReleaseConfig(gradle, prior));
   }
 });
