@@ -62,8 +62,8 @@ test("TEST APK workflow needs no saved signing key and retains verification befo
 
   const gradle = readFileSync(new URL("../android/app/build.gradle", import.meta.url), "utf8");
   assert.match(gradle, /applicationId "app\.coachaura\.trainer"/);
-  assert.match(gradle, /versionCode 2/);
-  assert.match(gradle, /versionName "1\.0\.1"/);
+  assert.match(gradle, /versionCode 3/);
+  assert.match(gradle, /versionName "1\.0\.2"/);
   assert.match(workflow, /build_release:[\s\S]*?default: false/);
   assert.match(workflow, /COACHAURA_UPLOAD_KEYSTORE_BASE64/);
   assert.match(workflow, /COACHAURA_UPLOAD_STORE_PASSWORD/);
